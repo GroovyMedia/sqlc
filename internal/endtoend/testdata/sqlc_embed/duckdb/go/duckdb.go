@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"reflect"
 )
 
 // The helpers below sit between the generated code and
@@ -47,9 +48,10 @@ func (s duckdbListScanner[T]) Scan(src any) error {
 	return nil
 }
 
-// duckdbListParam binds a list parameter. A nil slice is NULL, and a JSON
-// element is handed over as the string the driver takes; every other
-// slice binds as it is.
+// duckdbListParam binds a list parameter. A nil slice is NULL, a JSON
+// element is handed over as the string the driver takes, and so is an
+// element of a named string type such as a generated enum, which the
+// driver does not know; every other slice binds as it is.
 func duckdbListParam[T any](v []T) any {
 	if v == nil {
 		return nil
@@ -58,6 +60,13 @@ func duckdbListParam[T any](v []T) any {
 		out := make([]string, len(msgs))
 		for i, m := range msgs {
 			out[i] = string(m)
+		}
+		return out
+	}
+	if elem := reflect.TypeOf(v).Elem(); elem.Kind() == reflect.String && elem != reflect.TypeOf("") {
+		out := make([]string, len(v))
+		for i := range v {
+			out[i] = reflect.ValueOf(v[i]).String()
 		}
 		return out
 	}
