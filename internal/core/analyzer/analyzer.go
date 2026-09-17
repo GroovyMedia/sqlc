@@ -362,16 +362,28 @@ func (a *analyzer) typeValuesLists(l *ast.List) error {
 }
 
 // analyzeSetOperation types both sides of UNION, INTERSECT or EXCEPT and
-// reports the first branch's columns, the way the databases name the result.
+// reports the first branch's columns, the way the databases name the
+// result. A UNION returns the rows of both branches, so its column is
+// nullable when either branch's is; EXCEPT returns rows of the left branch
+// and INTERSECT rows both branches hold, so theirs is the left's.
 func (a *analyzer) analyzeSetOperation(s *ast.SelectStmt) error {
 	left, err := a.subquery(s.Larg)
 	if err != nil {
 		return err
 	}
-	if _, err := a.subquery(s.Rarg); err != nil {
+	right, err := a.subquery(s.Rarg)
+	if err != nil {
 		return err
 	}
 	a.columns = left.columns
+	if s.Op == ast.Union {
+		for i := range a.columns {
+			if i < len(right.columns) && !right.columns[i].NotNull && a.columns[i].NotNull {
+				a.columns[i].NotNull = false
+				a.columns[i].Type = a.columns[i].Type.WithNullable(true)
+			}
+		}
+	}
 	a.untypedColumns = left.untypedColumns
 	a.scope = left.scope
 	return nil
