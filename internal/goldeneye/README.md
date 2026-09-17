@@ -190,7 +190,9 @@ command; `endtoend/` finds them. The engine package loads the case's
 there, prints what the database reports in the JSON shape `sqlc analyze`
 prints, and compares it with the committed `stdout.json` byte for byte. A
 difference means sqlc's analysis disagrees with the database. A case that
-asks for `--ast` is skipped, since only sqlc can print that.
+asks for `--ast` is skipped, since only sqlc can print that. One thing no
+database reports that every checker says: a bare placeholder that is a
+`LIMIT` or `OFFSET` count is named after its clause, as sqlc names it.
 
 - **`clickhouse`** runs each case in an ephemeral `clickhouse local` process.
   Column types come from the executed query's result header, provenance from
@@ -277,7 +279,9 @@ asks for `--ast` is skipped, since only sqlc can print that.
   stands in for that column, the way one in its `VALUES` does; a parameter
   the query casts takes the cast's type as DuckDB spells it, and one
   inside a subquery, whose tables the statement's scope does not name,
-  takes the binder's. And whether
+  takes the binder's; a bare `LIMIT` or `OFFSET` count, which the binder
+  leaves untyped and converts when the statement runs, is an integer, the
+  type the dialect counts rows in. And whether
   an expression can be NULL, which DuckDB does not track: the query is
   run, with each parameter bound to a value of its type, over the fixture
   and over no rows, and a column is nullable when either run returns a

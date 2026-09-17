@@ -477,6 +477,18 @@ func (t text) inSubquery(k string) bool {
 	return false
 }
 
+// countName is the name sqlc gives parameter k when it is a bare LIMIT or
+// OFFSET count: the clause's, and "" when it is anything else.
+func (t text) countName(k string) string {
+	i := t.find(k)
+	for _, word := range []string{"limit", "offset"} {
+		if t.isWord(i-1, word) {
+			return word
+		}
+	}
+	return ""
+}
+
 // find returns the index of parameter k.
 func (t text) find(k string) int {
 	for i, tok := range t {

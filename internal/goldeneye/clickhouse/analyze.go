@@ -92,6 +92,8 @@ func analyzeQuery(ctx context.Context, l local, schema, fixture string, q endtoe
 		}
 		if ph.Name != "" {
 			ac.Name = ph.Name
+		} else if ac.Name == "" {
+			ac.Name = ph.Count
 		}
 		aq.Params = append(aq.Params, analysis.Param{Number: ph.Number, Column: ac})
 	}
@@ -265,6 +267,8 @@ func analyzeExec(ctx context.Context, l local, script, sql string, phs []placeho
 		}
 		if ph.Name != "" {
 			ac.Name = ph.Name
+		} else if ac.Name == "" {
+			ac.Name = ph.Count
 		}
 		aq.Params = append(aq.Params, analysis.Param{Number: ph.Number, Column: ac})
 	}

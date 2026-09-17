@@ -676,6 +676,16 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 			}
 		}
 	}
+	// A bare LIMIT or OFFSET count the binder leaves untyped, converting
+	// whatever is bound when the statement runs, is an integer: the
+	// dialect counts rows in the type of an integer literal.
+	for _, ph := range phs {
+		k := strconv.Itoa(ph.Number)
+		if b := bindings[ph.Number]; b.typ == nil && t.countName(k) != "" {
+			b.spelling = "INTEGER"
+			b.typ = a.parseType(b.spelling)
+		}
+	}
 
 	// Result columns.
 	var columns []analysis.Column
@@ -729,6 +739,8 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 		}
 		if ph.Name != "" {
 			ac.Name = ph.Name
+		} else if ac.Name == "" {
+			ac.Name = t.countName(strconv.Itoa(ph.Number))
 		}
 		if ph.Nullable {
 			ac.Type = withNullable(ac.Type, true)

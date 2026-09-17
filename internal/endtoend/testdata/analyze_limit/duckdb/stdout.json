@@ -1,0 +1,109 @@
+[
+  {
+    "name": "Page",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "limit",
+          "type": {
+            "name": "integer"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "offset",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "TopScored",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "score",
+          "type": {
+            "name": "integer"
+          },
+          "table": "posts"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "limit",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "PageNamed",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "page_size",
+          "type": {
+            "name": "integer"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "skip",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  }
+]

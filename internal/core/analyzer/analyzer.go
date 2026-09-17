@@ -297,17 +297,19 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 			}
 		}
 	}
-	for _, n := range []ast.Node{s.LimitCount, s.LimitOffset} {
-		if err := a.typeLimit(n); err != nil {
-			return fmt.Errorf("limit: %w", err)
-		}
+	if err := a.typeLimit(s.LimitCount, "limit"); err != nil {
+		return fmt.Errorf("limit: %w", err)
+	}
+	if err := a.typeLimit(s.LimitOffset, "offset"); err != nil {
+		return fmt.Errorf("offset: %w", err)
 	}
 	return nil
 }
 
 // typeLimit types a LIMIT or OFFSET count. A bare placeholder there holds
-// whatever the dialect counts rows in.
-func (a *analyzer) typeLimit(n ast.Node) error {
+// whatever the dialect counts rows in, and is named after the clause when
+// nothing else names it.
+func (a *analyzer) typeLimit(n ast.Node, name string) error {
 	if n == nil {
 		return nil
 	}
@@ -316,8 +318,13 @@ func (a *analyzer) typeLimit(n ast.Node) error {
 		if err != nil {
 			return err
 		}
-		a.locate(pr)
-		a.inferParam(pr.Number, exprType{typeOID: oid})
+		if err := a.typeOperands(pr, exprType{typeOID: oid}); err != nil {
+			return err
+		}
+		if p := a.params[pr.Number]; p.Name == "" && p.Source == nil {
+			p.Name = name
+			a.params[pr.Number] = p
+		}
 		return nil
 	}
 	_, err := a.typeExpr(n)
