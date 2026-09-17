@@ -13,12 +13,15 @@
 package duckdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 
@@ -385,6 +388,92 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 	return funcs, operators, nil
 }
 
+// mixedOperators measures what the binder makes of an operator over two
+// numeric types it lists no overload for. DuckDB promotes mixed numeric
+// operands to a common type when it binds them — DECIMAL * INTEGER is a
+// DECIMAL, INTEGER / INTEGER a DOUBLE, SMALLINT + UTINYINT a SMALLINT —
+// which duckdb_functions() does not describe, listing arithmetic over
+// each type alone. Every operator seeded over two numeric types is tried
+// over every ordered pair of numeric families it is not seeded over, in
+// one CLI process, and a pair the binder accepts becomes an overload
+// beside the seeded ones; one it rejects, as & over a DOUBLE is, is left
+// out. The pairs of an operator are listed after its seeded overloads,
+// in the order of the families in types.jsonl.
+func mixedOperators(ctx context.Context, binary string, types []dialect.Type, operators []dialect.Operator) ([]dialect.Operator, error) {
+	var numeric []string
+	for _, t := range types {
+		if t.Category == "N" {
+			numeric = append(numeric, t.Name)
+		}
+	}
+	known := typeNames(types)
+	seeded := map[string]bool{}
+	var names []string
+	for _, op := range operators {
+		seeded[op.Name+"\x00"+op.Left+"\x00"+op.Right] = true
+		if slices.Contains(numeric, op.Left) && slices.Contains(numeric, op.Right) && !slices.Contains(names, op.Name) {
+			names = append(names, op.Name)
+		}
+	}
+
+	type probeRow struct {
+		Op, Left, Right, Result string
+	}
+	var script strings.Builder
+	for _, name := range names {
+		for _, left := range numeric {
+			for _, right := range numeric {
+				if seeded[name+"\x00"+left+"\x00"+right] {
+					continue
+				}
+				fmt.Fprintf(&script, "SELECT %s AS op, %s AS left, %s AS right, typeof(l %s r) AS result FROM (SELECT 1::%s AS l, 1::%s AS r);\n",
+					quote(name), quote(left), quote(right), name, left, right)
+			}
+		}
+	}
+	// A statement the binder rejects fails on its own; the CLI runs the
+	// rest and exits non-zero, with the results of the ones it ran.
+	cmd := exec.CommandContext(ctx, binary, "-json", ":memory:")
+	cmd.Stdin = strings.NewReader(script.String())
+	out, err := cmd.Output()
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return nil, fmt.Errorf("duckdb: %w", err)
+		}
+	}
+	measured := map[string][]dialect.Operator{}
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var rows []probeRow
+		if err := dec.Decode(&rows); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("duckdb: reading mixed operators: %w", err)
+		}
+		for _, row := range rows {
+			result, ok := seedTypeName(row.Result, known)
+			if !ok {
+				continue
+			}
+			measured[row.Op] = append(measured[row.Op], dialect.Operator{Name: row.Op, Left: row.Left, Right: row.Right, Result: result})
+		}
+	}
+
+	var merged []dialect.Operator
+	for i, op := range operators {
+		merged = append(merged, op)
+		if i+1 == len(operators) || operators[i+1].Name != op.Name {
+			merged = append(merged, measured[op.Name]...)
+		}
+	}
+	return merged, nil
+}
+
+// quote writes a string as a SQL literal.
+func quote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
 // Generate reads the dialect from the CLI.
 func Generate(ctx context.Context, binary string) (dialect.Files, error) {
 	types, err := readTypes(ctx, binary)
@@ -393,6 +482,9 @@ func Generate(ctx context.Context, binary string) (dialect.Files, error) {
 	}
 	funcs, operators, err := readFunctions(ctx, binary, typeNames(types))
 	if err != nil {
+		return nil, err
+	}
+	if operators, err = mixedOperators(ctx, binary, types, operators); err != nil {
 		return nil, err
 	}
 	files := dialect.Files{}

@@ -1,0 +1,9 @@
+CREATE TABLE items (
+    id INTEGER PRIMARY KEY,
+    price DECIMAL(10,2) NOT NULL,
+    qty INTEGER NOT NULL,
+    stock BIGINT NOT NULL,
+    weight DOUBLE NOT NULL,
+    small TINYINT NOT NULL,
+    flags UTINYINT NOT NULL
+);

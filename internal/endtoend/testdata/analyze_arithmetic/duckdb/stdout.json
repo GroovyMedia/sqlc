@@ -1,0 +1,63 @@
+[
+  {
+    "name": "MixedIntegers",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "half",
+        "type": {
+          "name": "double"
+        }
+      },
+      {
+        "name": "half_floor",
+        "type": {
+          "name": "integer"
+        }
+      },
+      {
+        "name": "plus_big",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "weighted",
+        "type": {
+          "name": "double"
+        }
+      },
+      {
+        "name": "widened",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "squared",
+        "type": {
+          "name": "double"
+        }
+      },
+      {
+        "name": "masked",
+        "type": {
+          "name": "integer"
+        }
+      },
+      {
+        "name": "half_price",
+        "type": {
+          "name": "double"
+        }
+      },
+      {
+        "name": "heavier",
+        "type": {
+          "name": "double"
+        }
+      }
+    ],
+    "params": []
+  }
+]

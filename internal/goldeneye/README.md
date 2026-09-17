@@ -66,8 +66,13 @@ the hand-written files alone, and the checks do not look at them.
 - **`duckdb`** reads the DuckDB CLI named by `DUCKDB`, or the one `install`
   put in the user cache directory, or `duckdb` on `PATH`: `types.jsonl`,
   `functions.jsonl` and `operators.jsonl` come from `duckdb_types()` and
-  `duckdb_functions()`. Two things the catalog does not say are written
-  into the generator: a function's result is NULL when an argument is,
+  `duckdb_functions()`. The catalog lists arithmetic over each numeric
+  type alone, while the binder promotes mixed operands to a common type
+  — `DECIMAL * INTEGER` is a `DECIMAL`, `INTEGER / INTEGER` a `DOUBLE` —
+  so every operator seeded over two numeric types is also measured over
+  every pair of numeric families, with `typeof`, and the pairs the binder
+  accepts join `operators.jsonl`. Two things the catalog does not say are
+  written into the generator: a function's result is NULL when an argument is,
   except for `count` and the functions DuckDB binds with special NULL
   handling — `greatest` and `least`, `concat`, `hash`, the constructors
   of lists, structs and rows — which `functions.jsonl` marks as never
