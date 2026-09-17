@@ -50,9 +50,10 @@ type analyzer struct {
 	params  map[int]core.Parameter
 	command core.Command
 
-	// outer is the scope of the query this one is nested in, which a
-	// correlated subquery refers to.
-	outer *scope
+	// outer analyzes the query this one is nested in, whose scope a
+	// correlated subquery refers to. A subquery in FROM sees that scope as
+	// far as it is built, which is what LATERAL lets it read.
+	outer *analyzer
 
 	// ctes are the relations a WITH clause defined, visible to this query and
 	// to the ones nested in it.
@@ -85,7 +86,7 @@ func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
 	sub := &analyzer{
 		cat:    a.cat,
 		params: a.params,
-		outer:  a.scope,
+		outer:  a,
 		ctes:   a.ctes,
 		stars:  a.stars,
 	}

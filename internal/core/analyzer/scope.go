@@ -34,8 +34,9 @@ func (a *analyzer) buildScope(from *ast.List) (*scope, error) {
 // binding makes the scope under construction the one the analyzer resolves
 // against, and returns the func that puts back the scope it replaced. A FROM
 // item can refer to the ones before it — a set-returning function takes its
-// arguments from them — so binding an item has to see what is bound so far
-// rather than no scope at all.
+// arguments from them, and a LATERAL subquery reads their columns — so
+// binding an item has to see what is bound so far rather than no scope at
+// all.
 func (a *analyzer) binding(sc *scope) func() {
 	prev := a.scope
 	a.scope = sc
@@ -197,17 +198,17 @@ func (a *analyzer) bindRangeVar(rv *ast.RangeVar) (scopeRel, error) {
 	return rel, nil
 }
 
-// resolveColumn finds a column in this query's scope, falling back to the scope
-// of the query it is nested in, which is what a correlated subquery refers to.
+// resolveColumn finds a column in this query's scope, falling back to the
+// scopes of the queries it is nested in, outermost last, which is what a
+// correlated subquery at any depth refers to.
 func (a *analyzer) resolveColumn(relation, column string) (scopeRel, core.ClassColumn, bool, error) {
-	rel, col, ok, err := a.scope.resolveColumn(relation, column)
-	if err != nil || ok {
-		return rel, col, ok, err
+	for cur := a; cur != nil; cur = cur.outer {
+		rel, col, ok, err := cur.scope.resolveColumn(relation, column)
+		if err != nil || ok {
+			return rel, col, ok, err
+		}
 	}
-	if a.outer != nil {
-		return a.outer.resolveColumn(relation, column)
-	}
-	return rel, col, false, nil
+	return scopeRel{}, core.ClassColumn{}, false, nil
 }
 
 // resolveColumn finds the single column named column, optionally qualified by
