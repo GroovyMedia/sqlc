@@ -371,18 +371,33 @@ func (a *analyzer) typeAExpr(e *ast.A_Expr) (exprType, error) {
 		return exprType{}, err
 	}
 
+	// LIKE and its relatives compare like with like, whatever the dialect
+	// lists them over.
+	comparison := (e.Kind != ast.A_Expr_Kind_OP && e.Kind != 0) || a.cat.IsComparisonOperator(opName)
 	if pr, ok := e.Lexpr.(*ast.ParamRef); ok && rightT.typeOID != 0 {
-		a.inferParam(pr.Number, rightT)
-		a.nameParamAfter(pr.Number, e.Rexpr)
-		leftT = rightT
+		if t, ok, err := a.operandType(opName, rightT, false, comparison); err != nil {
+			return exprType{}, err
+		} else if ok {
+			a.inferParam(pr.Number, t)
+			a.nameParamAfter(pr.Number, e.Rexpr)
+			leftT = t
+		} else {
+			a.noteCause(pr, a.ambiguousOperand(opName, rightT))
+		}
 	} else if pr := castParamRef(e.Lexpr); pr != nil {
 		a.inferParam(pr.Number, rightT)
 		a.nameParamAfter(pr.Number, e.Rexpr)
 	}
 	if pr, ok := e.Rexpr.(*ast.ParamRef); ok && leftT.typeOID != 0 {
-		a.inferParam(pr.Number, leftT)
-		a.nameParamAfter(pr.Number, e.Lexpr)
-		rightT = leftT
+		if t, ok, err := a.operandType(opName, leftT, true, comparison); err != nil {
+			return exprType{}, err
+		} else if ok {
+			a.inferParam(pr.Number, t)
+			a.nameParamAfter(pr.Number, e.Lexpr)
+			rightT = t
+		} else {
+			a.noteCause(pr, a.ambiguousOperand(opName, leftT))
+		}
 	} else if pr := castParamRef(e.Rexpr); pr != nil {
 		a.inferParam(pr.Number, leftT)
 		a.nameParamAfter(pr.Number, e.Lexpr)
@@ -401,6 +416,55 @@ func (a *analyzer) typeAExpr(e *ast.A_Expr) (exprType, error) {
 		typeOID:  overload.ResultTypeOID,
 		nullable: (leftT.nullable || rightT.nullable) && !isNullTest(opName),
 	}, nil
+}
+
+// operandType is the type a bare placeholder holds beside an operand of a
+// known type. A comparison compares like with like, and so does an
+// operator the dialect lists over the known type twice, or does not list
+// over the known type at all: the placeholder holds the known type.
+// Otherwise the overloads over the known type say what stands beside it
+// — an interval beside a timestamp under + — when they agree; when they
+// do not, as bigint and double do beside an interval under *, nothing
+// says, and the placeholder is left for the query to cast. known is on
+// the left when the placeholder is on the right.
+func (a *analyzer) operandType(opName string, known exprType, knownLeft, comparison bool) (exprType, bool, error) {
+	if comparison {
+		return known, true, nil
+	}
+	all, err := a.cat.FindOperators(opName, 0, 0)
+	if err != nil {
+		return exprType{}, false, err
+	}
+	chain := a.cat.ResolutionChain(known.typeOID)
+	var others []int64
+	for _, ov := range all {
+		same, other := ov.LeftTypeOID, ov.RightTypeOID
+		if !knownLeft {
+			same, other = other, same
+		}
+		if !slices.Contains(chain, same) {
+			continue
+		}
+		if slices.Contains(chain, other) {
+			return known, true, nil
+		}
+		if !slices.Contains(others, other) {
+			others = append(others, other)
+		}
+	}
+	switch len(others) {
+	case 0:
+		return known, true, nil
+	case 1:
+		return exprType{typeOID: others[0]}, true, nil
+	}
+	return exprType{}, false, nil
+}
+
+// ambiguousOperand says why a placeholder beside an operand of a known
+// type has none: the operator takes more than one type there.
+func (a *analyzer) ambiguousOperand(opName string, known exprType) exprType {
+	return exprType{untyped: fmt.Sprintf("%q takes more than one type beside a value of type %s", opName, a.spell(known))}
 }
 
 // castParamRef is the placeholder a cast wraps, as ClickHouse's {p:UInt64}
