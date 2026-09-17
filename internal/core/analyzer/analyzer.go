@@ -367,7 +367,10 @@ func (a *analyzer) typeValuesLists(l *ast.List) error {
 				return err
 			}
 			if i < len(a.columns) {
-				a.columns[i].NotNull = a.columns[i].NotNull && !t.nullable
+				if t.nullable && a.columns[i].NotNull {
+					a.columns[i].NotNull = false
+					a.columns[i].Type = a.columns[i].Type.WithNullable(true)
+				}
 				continue
 			}
 			col := core.Column{Name: fmt.Sprintf("col%d", i), TypeOID: t.typeOID, NotNull: !t.nullable}

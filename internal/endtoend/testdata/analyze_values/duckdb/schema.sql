@@ -1,0 +1,1 @@
+CREATE TABLE unused (id INTEGER);
