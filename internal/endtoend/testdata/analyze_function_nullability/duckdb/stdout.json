@@ -68,5 +68,40 @@
       }
     ],
     "params": []
+  },
+  {
+    "name": "Conversions",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "m",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "str",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
   }
 ]

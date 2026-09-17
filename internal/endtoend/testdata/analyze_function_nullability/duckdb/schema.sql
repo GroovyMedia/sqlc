@@ -3,5 +3,7 @@ CREATE TABLE authors (
   name   TEXT    NOT NULL,
   bio    TEXT,
   born   DATE,
-  active BOOLEAN NOT NULL
+  active BOOLEAN NOT NULL,
+  extra  JSON    NOT NULL,
+  handle UNION(num INTEGER, str VARCHAR) NOT NULL
 );

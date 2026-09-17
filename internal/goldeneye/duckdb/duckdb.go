@@ -259,11 +259,12 @@ var neverNull = map[string]bool{
 }
 
 // mayBeNull lists the scalar and window functions whose result can be NULL
-// when no argument is: a lookup that finds nothing, a window row with no
-// neighbour or a window frame that can be empty, an aggregate over an
-// empty list. The number is the fewest arguments an overload takes for
-// that to hold — json_type(j) always has an answer, json_type(j, path)
-// has none for a path that is not there.
+// when no argument is: a lookup that finds nothing, a conversion that
+// does not apply, a window row with no neighbour or a window frame that
+// can be empty, an aggregate over an empty list. The number is the
+// fewest arguments an overload takes for that to hold — json_type(j)
+// always has an answer, json_type(j, path) has none for a path that is
+// not there.
 var mayBeNull = map[string]int{
 	"aggregate":                     2,
 	"array_aggr":                    2,
@@ -274,6 +275,7 @@ var mayBeNull = map[string]int{
 	"array_to_string":               2,
 	"array_to_string_comma_default": 2,
 	"first_value":                   1,
+	"from_json":                     2,
 	"get_block_size":                1,
 	"json_array_length":             2,
 	"json_extract":                  2,
@@ -281,6 +283,7 @@ var mayBeNull = map[string]int{
 	"json_extract_path_text":        2,
 	"json_extract_string":           2,
 	"json_keys":                     2,
+	"json_transform":                2,
 	"json_type":                     2,
 	"json_value":                    2,
 	"lag":                           1,
@@ -296,6 +299,7 @@ var mayBeNull = map[string]int{
 	"nth_value":                     2,
 	"nullif":                        2,
 	"try_strptime":                  2,
+	"union_extract":                 2,
 }
 
 func functionKind(functionType string) string {

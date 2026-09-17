@@ -1432,8 +1432,8 @@
 {"name":"from_base64","args":[{"type":"varchar"}],"returns":"blob"}
 {"name":"from_binary","args":[{"type":"varchar"}],"returns":"blob"}
 {"name":"from_hex","args":[{"type":"varchar"}],"returns":"blob"}
-{"name":"from_json","args":[{"type":"json"},{"type":"varchar"}],"returns":"any"}
-{"name":"from_json","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any"}
+{"name":"from_json","args":[{"type":"json"},{"type":"varchar"}],"returns":"any","nullable":true}
+{"name":"from_json","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any","nullable":true}
 {"name":"from_json_strict","args":[{"type":"json"},{"type":"varchar"}],"returns":"any"}
 {"name":"from_json_strict","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any"}
 {"name":"fsum","kind":"a","args":[{"type":"double"}],"returns":"double","nullable":true}
@@ -1723,8 +1723,8 @@
 {"name":"json_strip_nulls","args":[{"type":"json"}],"returns":"json"}
 {"name":"json_structure","args":[{"type":"json"}],"returns":"json"}
 {"name":"json_structure","args":[{"type":"varchar"}],"returns":"json"}
-{"name":"json_transform","args":[{"type":"json"},{"type":"varchar"}],"returns":"any"}
-{"name":"json_transform","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any"}
+{"name":"json_transform","args":[{"type":"json"},{"type":"varchar"}],"returns":"any","nullable":true}
+{"name":"json_transform","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any","nullable":true}
 {"name":"json_transform_strict","args":[{"type":"json"},{"type":"varchar"}],"returns":"any"}
 {"name":"json_transform_strict","args":[{"type":"varchar"},{"type":"varchar"}],"returns":"any"}
 {"name":"json_type","args":[{"type":"json"},{"type":"varchar[]"}],"returns":"varchar[]","nullable":true}
@@ -2723,7 +2723,7 @@
 {"name":"unbin","args":[{"type":"varchar"}],"returns":"blob"}
 {"name":"unhex","args":[{"type":"varchar"}],"returns":"blob"}
 {"name":"unicode","args":[{"type":"varchar"}],"returns":"integer"}
-{"name":"union_extract","args":[{"type":"union"},{"type":"varchar"}],"returns":"any"}
+{"name":"union_extract","args":[{"type":"union"},{"type":"varchar"}],"returns":"any","nullable":true}
 {"name":"union_tag","args":[{"type":"union"}],"returns":"any"}
 {"name":"union_value","args":[{"type":"any","mode":"v"}],"returns":"union"}
 {"name":"unpivot_list","args":[{"type":"any","mode":"v"}],"returns":"list"}

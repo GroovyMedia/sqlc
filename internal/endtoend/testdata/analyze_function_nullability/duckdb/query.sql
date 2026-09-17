@@ -13,3 +13,11 @@ SELECT
   last_value(name) OVER (ORDER BY id ROWS BETWEEN 1 FOLLOWING AND 2 FOLLOWING) AS lv,
   lag(name) OVER (ORDER BY id) AS previous
 FROM authors;
+
+-- name: Conversions :many
+SELECT
+  id,
+  json_transform(extra, '"INTEGER"')::INTEGER AS n,
+  from_json(extra, '"INTEGER"')::INTEGER AS m,
+  union_extract(handle, 'str') AS str
+FROM authors;
