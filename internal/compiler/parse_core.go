@@ -62,6 +62,10 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 		for _, col := range res.Columns {
 			cols = append(cols, coreColumn(col))
 		}
+		cols, err = c.embedCore(raw, res, pre.Embeds, cols)
+		if err != nil {
+			return nil, err
+		}
 		for _, p := range res.Parameters {
 			params = append(params, Parameter{Number: p.Number, Column: coreParamColumn(p, namedParams)})
 		}
@@ -158,6 +162,7 @@ func coreParamColumn(p core.Parameter, params *named.ParamSet) *Column {
 	if param, isNamed := params.FetchMerge(p.Number, named.NewInferredParam(col.Name, p.NotNull)); isNamed {
 		col.Name = param.Name()
 		col.NotNull = param.NotNull()
+		col.TypeExpr = col.TypeExpr.WithNullable(!col.NotNull)
 		col.IsSqlcSlice = param.IsSqlcSlice()
 		col.IsNamedParam = true
 	}

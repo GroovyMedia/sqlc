@@ -374,6 +374,13 @@ func (d Dialect) replacement(occ *occurrence) string {
 	case kindEmbed:
 		return occ.ident + ".*"
 	case kindNative:
+		// A dollar-numbered dialect that also accepts ? (DuckDB) numbers a
+		// ? one past the highest number seen so far, so a ? that shares a
+		// statement with a numbered placeholder is written with the number
+		// it was given here.
+		if d.Style == StyleDollar && !occ.explicit {
+			return fmt.Sprintf("$%d", occ.number)
+		}
 		return occ.ident
 	}
 	switch d.Style {

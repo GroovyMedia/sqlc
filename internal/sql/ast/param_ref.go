@@ -9,7 +9,7 @@ type ParamRef struct {
 	Location int  `json:"location"`
 	Dollar   bool `json:"dollar"`
 	// Name is the name the query gave the placeholder, when its syntax
-	// has one: ClickHouse's {name:Type}.
+	// has one: ClickHouse's {name:Type} or DuckDB's $name.
 	Name string `json:"name,omitempty"`
 }
 

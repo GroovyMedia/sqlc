@@ -1,0 +1,284 @@
+[
+  {
+    "name": "AtSign",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "min_royalties",
+          "type": {
+            "name": "decimal",
+            "args": [
+              {
+                "int": 10
+              },
+              {
+                "int": 2
+              }
+            ]
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Arg",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "min_royalties",
+          "type": {
+            "name": "decimal",
+            "args": [
+              {
+                "int": 10
+              },
+              {
+                "int": 2
+              }
+            ]
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "NargOnNotNull",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "NargOnNullable",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "bio",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RepeatedName",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "q",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RepeatedDollarName",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertAtSign",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "bio",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          },
+          "table": "authors"
+        }
+      },
+      {
+        "number": 4,
+        "column": {
+          "name": "royalties",
+          "type": {
+            "name": "decimal",
+            "args": [
+              {
+                "int": 10
+              },
+              {
+                "int": 2
+              }
+            ]
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  }
+]

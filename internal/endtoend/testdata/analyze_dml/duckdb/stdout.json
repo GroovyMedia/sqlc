@@ -123,7 +123,7 @@
       {
         "number": 1,
         "column": {
-          "name": "price",
+          "name": "min_price",
           "type": {
             "name": "decimal",
             "nullable": true,

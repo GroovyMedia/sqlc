@@ -20,7 +20,7 @@ func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 		return nil, err
 	}
 	for _, ns := range namespaces {
-		schema := &catalog.Schema{Name: ns.Name}
+		schema := resultSchema(cat, ns.Name)
 		tables, err := c.TablesInNamespace(ns.OID)
 		if err != nil {
 			return nil, err
@@ -56,7 +56,21 @@ func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 			}
 			schema.Tables = append(schema.Tables, t)
 		}
-		cat.Schemas = append(cat.Schemas, schema)
 	}
 	return cat, nil
+}
+
+// resultSchema is the schema of the legacy catalog a namespace fills.
+// catalog.New seeds the default schema, so the namespace named after it
+// fills that one in rather than adding a second one of the same name,
+// which lookups by name would never see past.
+func resultSchema(cat *catalog.Catalog, name string) *catalog.Schema {
+	for _, s := range cat.Schemas {
+		if s.Name == name {
+			return s
+		}
+	}
+	s := &catalog.Schema{Name: name}
+	cat.Schemas = append(cat.Schemas, s)
+	return s
 }

@@ -1,0 +1,31 @@
+{
+  "version": "2",
+  "sql": [
+    {
+      "engine": "duckdb",
+      "schema": "schema.sql",
+      "queries": "query.sql",
+      "gen": {
+        "go": {
+          "package": "querytest",
+          "out": "go",
+          "emit_pointers_for_null_types": true,
+          "overrides": [
+            {
+              "db_type": "varchar",
+              "go_type": "string"
+            },
+            {
+              "db_type": "varchar",
+              "nullable": true,
+              "go_type": {
+                "type": "string",
+                "pointer": true
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

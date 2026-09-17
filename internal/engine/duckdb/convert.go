@@ -505,11 +505,14 @@ func (c *cc) convertConstant(e *dw.ConstantExpression) ast.Node {
 
 // convertParameter converts a prepared-statement parameter. darkwing has
 // already numbered every spelling: explicit for $3 and ?3, in order of
-// appearance for ?, and in order of first use for $name.
+// appearance for ?, and in order of first use for $name, so every use of
+// one name shares a number. The name is kept so the parameter is named
+// after it.
 func (c *cc) convertParameter(e *dw.ParameterExpression) ast.Node {
 	return &ast.ParamRef{
 		Number:   e.Number,
 		Dollar:   e.Kind == dw.ParameterNumbered || e.Kind == dw.ParameterNamed,
+		Name:     e.Name,
 		Location: c.loc(e),
 	}
 }

@@ -39,16 +39,20 @@ import (
 // when either run returns a NULL for it.
 
 // placeholder is one parameter of a query as sqlc numbers them: a $n by
-// its number, and each $name, sqlc.arg name or ? in turn at its first
-// appearance, taking the lowest number no $n took.
+// its number, and each $name, @name, sqlc.arg name or ? in turn at its
+// first appearance, taking the lowest number no $n took. A named one is
+// reported under its name, and a sqlc.narg one as nullable, the way sqlc
+// reports them.
 type placeholder struct {
-	Number int
-	Name   string
+	Number   int
+	Name     string
+	Nullable bool
 }
 
 var (
 	numberedRe = regexp.MustCompile(`^\$([0-9]+)`)
 	namedRe    = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)`)
+	atNamedRe  = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)`)
 	sqlcArgRe  = regexp.MustCompile(`^sqlc\.(n?arg|slice)\(\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\s*\)`)
 )
 
@@ -58,7 +62,8 @@ func bind(query string) (string, []placeholder) {
 	type occurrence struct {
 		start, end int
 		number     int    // for $n
-		name       string // for $name or sqlc.arg, "" for ?
+		name       string // for $name, @name or sqlc.arg, "" for ?
+		nullable   bool   // for sqlc.narg
 	}
 	var occ []occurrence
 	i := 0
@@ -93,9 +98,13 @@ func bind(query string) (string, []placeholder) {
 			m := namedRe.FindStringSubmatch(query[i:])
 			occ = append(occ, occurrence{start: i, end: i + len(m[0]), name: m[1]})
 			i += len(m[0])
+		case c == '@' && atNamedRe.MatchString(query[i:]):
+			m := atNamedRe.FindStringSubmatch(query[i:])
+			occ = append(occ, occurrence{start: i, end: i + len(m[0]), name: m[1]})
+			i += len(m[0])
 		case c == 's' && sqlcArgRe.MatchString(query[i:]):
 			m := sqlcArgRe.FindStringSubmatch(query[i:])
-			occ = append(occ, occurrence{start: i, end: i + len(m[0]), name: m[2]})
+			occ = append(occ, occurrence{start: i, end: i + len(m[0]), name: m[2], nullable: m[1] == "narg"})
 			i += len(m[0])
 		default:
 			i++
@@ -134,7 +143,7 @@ func bind(query string) (string, []placeholder) {
 		n := assign(o)
 		if !numbered[n] {
 			numbered[n] = true
-			phs = append(phs, placeholder{Number: n, Name: o.name})
+			phs = append(phs, placeholder{Number: n, Name: o.name, Nullable: o.nullable})
 		}
 		out.WriteString(query[last:o.start])
 		out.WriteString("$" + strconv.Itoa(n))
@@ -685,6 +694,12 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 		ac := analysis.Column{Type: b.typ}
 		if b.column != nil {
 			ac = *b.column
+		}
+		if ph.Name != "" {
+			ac.Name = ph.Name
+		}
+		if ph.Nullable {
+			ac.Type = withNullable(ac.Type, true)
 		}
 		aq.Params = append(aq.Params, analysis.Param{Number: ph.Number, Column: ac})
 	}
