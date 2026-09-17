@@ -1367,6 +1367,14 @@ func Walk(f Visitor, node ast.Node) {
 			Walk(f, n.Alias)
 		}
 
+	case *ast.LambdaExpr:
+		if n.Params != nil {
+			Walk(f, n.Params)
+		}
+		if n.Body != nil {
+			Walk(f, n.Body)
+		}
+
 	case *ast.ListenStmt:
 		// pass
 

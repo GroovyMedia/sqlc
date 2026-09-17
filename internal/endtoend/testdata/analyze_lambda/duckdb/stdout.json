@@ -1,0 +1,106 @@
+[
+  {
+    "name": "LambdaParamInBody",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "suffix",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "small",
+          "type": {
+            "name": "integer"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "LambdaTwoParams",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "total",
+        "type": {
+          "name": "integer"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "acc",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "LambdaShadowsColumn",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "shouted",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "LambdaNested",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "not_largest",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "integer"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "params": []
+  }
+]

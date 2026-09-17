@@ -42,6 +42,9 @@ func (a *analyzer) typeExpr(n ast.Node) (exprType, error) {
 	case *ast.TODO:
 		return exprType{untyped: unsupported(e)}, nil
 
+	case *ast.LambdaExpr:
+		return a.typeLambda(e)
+
 	case *ast.A_Const:
 		return a.typeConst(e)
 
@@ -164,6 +167,11 @@ func (a *analyzer) typeColumnRef(c *ast.ColumnRef) (exprType, error) {
 	if len(parts) >= 2 {
 		relation = parts[0]
 		column = parts[1]
+	}
+	// A lambda's parameter hides a column of its name. What it holds is
+	// the function's to say, which the seed does not.
+	if relation == "" && a.lambdas[column] > 0 {
+		return exprType{untyped: fmt.Sprintf("lambda parameter %q has no type", column)}, nil
 	}
 	rel, col, ok, err := a.resolveColumn(relation, column)
 	if err != nil {
@@ -1048,6 +1056,34 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		ret.untyped = fmt.Sprintf("the result of %q has no known type here", name)
 	}
 	return ret, nil
+}
+
+// typeLambda types a lambda passed to a function: its body, with the
+// parameters in scope, for the placeholders the body holds. The lambda
+// itself is of the type the dialect seeds its parameters as, when it
+// seeds one, which is how list_transform and its relatives list it.
+func (a *analyzer) typeLambda(l *ast.LambdaExpr) (exprType, error) {
+	if a.lambdas == nil {
+		a.lambdas = map[string]int{}
+	}
+	for _, item := range listItems(l.Params) {
+		if s, ok := item.(*ast.String); ok {
+			a.lambdas[s.Str]++
+		}
+	}
+	_, err := a.typeExpr(l.Body)
+	for _, item := range listItems(l.Params) {
+		if s, ok := item.(*ast.String); ok {
+			a.lambdas[s.Str]--
+		}
+	}
+	if err != nil {
+		return exprType{}, fmt.Errorf("lambda: %w", err)
+	}
+	if oid, err := a.cat.TypeOID("lambda"); err == nil {
+		return exprType{typeOID: oid}, nil
+	}
+	return exprType{untyped: "a lambda has no type"}, nil
 }
 
 // typeFuncClauses types the clauses a call carries besides its arguments:

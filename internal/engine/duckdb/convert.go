@@ -526,13 +526,34 @@ func (c *cc) convertExpr(expr dw.Expr) ast.Node {
 
 // convertLambda converts what darkwing parses as a single-arrow lambda,
 // "doc -> 'key'": outside a lambda function DuckDB binds it as the JSON
-// extract operator, json_extract(doc, 'key'). The lambda keyword form
-// has no sqlc node.
+// extract operator, json_extract(doc, 'key'), and DuckDB 2.0 rejects
+// the arrow as a lambda unless told otherwise. The keyword form,
+// "lambda x: x + 1", is a lambda: its parameters come as one column
+// reference, or as a row of them.
 func (c *cc) convertLambda(e *dw.LambdaExpression) ast.Node {
-	if e.SyntaxType != dw.LambdaSingleArrow {
-		return c.todo(e)
+	if e.SyntaxType == dw.LambdaSingleArrow {
+		return c.call("json_extract", e, e.LHS, e.Expr)
 	}
-	return c.call("json_extract", e, e.LHS, e.Expr)
+	lambda := &ast.LambdaExpr{
+		Params:   &ast.List{},
+		Body:     c.convertExpr(e.Expr),
+		Location: c.loc(e),
+	}
+	params := []dw.Expr{e.LHS}
+	if row, ok := e.LHS.(*dw.FunctionExpression); ok && identifier(row.FunctionName) == "row" {
+		params = params[:0]
+		for _, arg := range row.Arguments {
+			params = append(params, arg.Expr)
+		}
+	}
+	for _, param := range params {
+		ref, ok := param.(*dw.ColumnRefExpression)
+		if !ok || len(ref.ColumnNames) != 1 {
+			return c.todo(e)
+		}
+		lambda.Params.Items = append(lambda.Params.Items, &ast.String{Str: identifier(ref.ColumnNames[0])})
+	}
+	return lambda
 }
 
 // call is a call of a built-in function over operands, which is how DuckDB

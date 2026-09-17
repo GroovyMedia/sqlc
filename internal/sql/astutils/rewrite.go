@@ -837,6 +837,10 @@ func (a *application) apply(parent ast.Node, name string, iter *iterator, n ast.
 		a.apply(n, "Quals", nil, n.Quals)
 		a.apply(n, "Alias", nil, n.Alias)
 
+	case *ast.LambdaExpr:
+		a.apply(n, "Params", nil, n.Params)
+		a.apply(n, "Body", nil, n.Body)
+
 	case *ast.ListenStmt:
 		// pass
 
