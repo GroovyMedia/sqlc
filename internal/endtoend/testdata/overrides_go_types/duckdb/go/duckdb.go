@@ -7,6 +7,7 @@ package override
 import (
 	"bytes"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -56,29 +57,55 @@ func (s duckdbListScanner[T]) Scan(src any) error {
 	return nil
 }
 
-// duckdbListParam binds a list parameter. A nil slice is NULL, a JSON
-// element is handed over as the string the driver takes, and so is an
-// element of a named string type such as a generated enum, which the
-// driver does not know; every other slice binds as it is.
+// duckdbListParam binds a list parameter. A nil slice is NULL. A slice
+// of bools, numbers, strings or UUIDs, nested or not, is handed over as a
+// duckdbListArg, and a JSON message or a named string type such as a
+// generated enum as a duckdbListArg of strings. A slice of any other
+// element type binds as it is: the driver would type a time.Time as
+// TIMESTAMPTZ and a []byte as VARCHAR on its own. A BLOB[] parameter
+// takes no [][]byte either way; write $n::VARCHAR[]::BLOB[] and pass the
+// bytes as '\xHH' text.
 func duckdbListParam[T any](v []T) any {
 	if v == nil {
 		return nil
 	}
 	if msgs, ok := any(v).([]json.RawMessage); ok {
-		out := make([]string, len(msgs))
+		out := make(duckdbListArg[string], len(msgs))
 		for i, m := range msgs {
 			out[i] = string(m)
 		}
 		return out
 	}
-	if elem := reflect.TypeOf(v).Elem(); elem.Kind() == reflect.String && elem != reflect.TypeOf("") {
-		out := make([]string, len(v))
+	elem := reflect.TypeOf(v).Elem()
+	if elem.Kind() == reflect.String && elem != reflect.TypeOf("") {
+		out := make(duckdbListArg[string], len(v))
 		for i := range v {
 			out[i] = reflect.ValueOf(v[i]).String()
 		}
 		return out
 	}
+	for elem.Kind() == reflect.Slice {
+		elem = elem.Elem()
+	}
+	switch elem.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.String, reflect.Array:
+		return duckdbListArg[T](v)
+	}
 	return v
+}
+
+// duckdbListArg is a list parameter the driver types from its Go
+// elements, so that DuckDB casts the list to the parameter's type. Bound
+// as a plain slice, the driver would instead build each element for the
+// parameter's type itself: it asserts the exact Go width of a number and
+// panics on any other, and it cannot build a DECIMAL, ENUM or UUID
+// element at all.
+type duckdbListArg[T any] []T
+
+func (v duckdbListArg[T]) Value() (driver.Value, error) {
+	return []T(v), nil
 }
 
 // duckdbJSON scans a JSON column, which the driver decodes, back into its

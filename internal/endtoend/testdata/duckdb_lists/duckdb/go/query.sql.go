@@ -7,25 +7,35 @@ package querytest
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createThing = `-- name: CreateThing :exec
-INSERT INTO things (id, li, ls) VALUES ($1, $2, $3);
+INSERT INTO things (id, li, ls, lg, lu) VALUES ($1, $2, $3, $4, $5);
 `
 
 type CreateThingParams struct {
 	ID int32
 	Li []int32
 	Ls []string
+	Lg []Genre
+	Lu []uuid.UUID
 }
 
 func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error {
-	_, err := q.db.ExecContext(ctx, createThing, arg.ID, duckdbListParam(arg.Li), duckdbListParam(arg.Ls))
+	_, err := q.db.ExecContext(ctx, createThing,
+		arg.ID,
+		duckdbListParam(arg.Li),
+		duckdbListParam(arg.Ls),
+		duckdbListParam(arg.Lg),
+		duckdbListParam(arg.Lu),
+	)
 	return err
 }
 
 const getThing = `-- name: GetThing :one
-SELECT id, li, ls, ld FROM things WHERE id = $1;
+SELECT id, li, ls, ld, lg, lu FROM things WHERE id = $1;
 `
 
 func (q *Queries) GetThing(ctx context.Context, id int32) (Thing, error) {
@@ -36,6 +46,8 @@ func (q *Queries) GetThing(ctx context.Context, id int32) (Thing, error) {
 		duckdbList(&i.Li),
 		duckdbList(&i.Ls),
 		duckdbList(&i.Ld),
+		duckdbList(&i.Lg),
+		duckdbList(&i.Lu),
 	)
 	return i, err
 }
@@ -102,4 +114,31 @@ func (q *Queries) ThingPrices(ctx context.Context, id int32) ([]string, error) {
 	var ld []string
 	err := row.Scan(duckdbList(&ld))
 	return ld, err
+}
+
+const thingsByRef = `-- name: ThingsByRef :many
+SELECT id FROM things WHERE lu[1] = ANY($1::UUID[]) ORDER BY id;
+`
+
+func (q *Queries) ThingsByRef(ctx context.Context, dollar_1 []uuid.UUID) ([]int32, error) {
+	rows, err := q.db.QueryContext(ctx, thingsByRef, duckdbListParam(dollar_1))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

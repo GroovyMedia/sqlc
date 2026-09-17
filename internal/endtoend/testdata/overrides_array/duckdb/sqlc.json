@@ -1,0 +1,23 @@
+{
+  "version": "2",
+  "sql": [
+    {
+      "engine": "duckdb",
+      "schema": "schema.sql",
+      "queries": "query.sql",
+      "gen": {
+        "go": {
+          "package": "query",
+          "out": "query",
+          "sql_package": "database/sql",
+          "overrides": [
+            {
+              "db_type": "integer",
+              "go_type": "int64"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

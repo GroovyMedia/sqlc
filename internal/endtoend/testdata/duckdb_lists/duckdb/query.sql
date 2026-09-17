@@ -2,7 +2,10 @@
 SELECT * FROM things WHERE id = $1;
 
 -- name: CreateThing :exec
-INSERT INTO things (id, li, ls) VALUES ($1, $2, $3);
+INSERT INTO things (id, li, ls, lg, lu) VALUES ($1, $2, $3, $4, $5);
+
+-- name: ThingsByRef :many
+SELECT id FROM things WHERE lu[1] = ANY($1::UUID[]) ORDER BY id;
 
 -- name: SetPrices :exec
 UPDATE things SET ld = $1 WHERE id = $2;
