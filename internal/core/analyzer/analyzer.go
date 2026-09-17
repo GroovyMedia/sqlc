@@ -299,10 +299,31 @@ func (a *analyzer) typeLimit(n ast.Node) error {
 	return err
 }
 
+// typeValuesLists types a VALUES list and reports its columns, named col0,
+// col1, ... as DuckDB names them, which an alias renames. A column takes
+// the first row's type and is nullable when any row's value is.
 func (a *analyzer) typeValuesLists(l *ast.List) error {
 	for _, row := range listItems(l) {
-		if _, err := a.typeExpr(row); err != nil {
-			return err
+		items, ok := row.(*ast.List)
+		if !ok {
+			if _, err := a.typeExpr(row); err != nil {
+				return err
+			}
+			continue
+		}
+		for i, v := range items.Items {
+			t, err := a.typeExpr(v)
+			if err != nil {
+				return err
+			}
+			if i < len(a.columns) {
+				a.columns[i].NotNull = a.columns[i].NotNull && !t.nullable
+				continue
+			}
+			col := core.Column{Name: fmt.Sprintf("col%d", i), TypeOID: t.typeOID, NotNull: !t.nullable}
+			col.DataType, col.IsArray = a.typeNameOf(t)
+			col.Type = a.typeExprOf(t)
+			a.columns = append(a.columns, col)
 		}
 	}
 	return nil

@@ -1,0 +1,109 @@
+[
+  {
+    "name": "InsertAuditFromLists",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          },
+          "table": "audit"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "note",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "varchar"
+                }
+              }
+            ]
+          },
+          "table": "audit"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertUsersFromLists",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "varchar"
+                }
+              }
+            ]
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "age",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "integer"
+                }
+              }
+            ]
+          },
+          "table": "users"
+        }
+      }
+    ]
+  }
+]

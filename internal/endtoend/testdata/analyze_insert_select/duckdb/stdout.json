@@ -1,0 +1,202 @@
+[
+  {
+    "name": "InsertUserIfMissing",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "age",
+          "type": {
+            "name": "integer",
+            "nullable": true
+          },
+          "table": "users"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertAuditRow",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "audit"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "note",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "audit"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertUsersFromValues",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "age",
+          "type": {
+            "name": "integer",
+            "nullable": true
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 4,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 5,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 6,
+        "column": {
+          "name": "age",
+          "type": {
+            "name": "integer",
+            "nullable": true
+          },
+          "table": "users"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertUsersFromNamedValues",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "users"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "users"
+        }
+      }
+    ]
+  },
+  {
+    "name": "InsertAuditFromLists",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "varchar"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

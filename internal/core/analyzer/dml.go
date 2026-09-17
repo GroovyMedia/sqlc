@@ -140,8 +140,13 @@ func (a *analyzer) bindInsertValues(n ast.Node, rel scopeRel, targets []core.Cla
 		return fmt.Errorf("insert: unsupported source %T", n)
 	}
 	// INSERT ... SELECT inserts whatever the query returns. The rows are not
-	// the statement's result, but the query still holds placeholders.
-	if sel.ValuesLists == nil {
+	// the statement's result, but the query still holds placeholders, and
+	// one the query projects straight into a target column holds what the
+	// column does.
+	if len(listItems(sel.ValuesLists)) == 0 {
+		if err := a.bindInsertSelect(sel, rel, targets); err != nil {
+			return err
+		}
 		_, err := a.subqueryColumns(sel)
 		return err
 	}
@@ -161,6 +166,87 @@ func (a *analyzer) bindInsertValues(n ast.Node, rel scopeRel, targets []core.Cla
 		}
 	}
 	return nil
+}
+
+// bindInsertSelect types the placeholders an INSERT ... SELECT projects
+// into its target columns, by position: a bare placeholder holds the
+// column's type, and one unnested into the column holds a list of it. A
+// SELECT * over a VALUES list is bound row by row, as INSERT ... VALUES is.
+// The query's own context types its other placeholders.
+func (a *analyzer) bindInsertSelect(sel *ast.SelectStmt, rel scopeRel, targets []core.ClassColumn) error {
+	if values := selectedValues(sel); values != nil {
+		for _, row := range listItems(values) {
+			items, ok := row.(*ast.List)
+			if !ok {
+				continue
+			}
+			for i, v := range items.Items {
+				pr, ok := v.(*ast.ParamRef)
+				if !ok || i >= len(targets) {
+					continue
+				}
+				a.locate(pr)
+				a.inferParam(pr.Number, columnType(rel, targets[i]))
+			}
+		}
+		return nil
+	}
+	for i, item := range listItems(sel.TargetList) {
+		rt, ok := item.(*ast.ResTarget)
+		if !ok || i >= len(targets) {
+			return nil
+		}
+		// A star shifts every position after it.
+		if isStarRef(rt.Val) {
+			return nil
+		}
+		t := columnType(rel, targets[i])
+		switch v := rt.Val.(type) {
+		case *ast.ParamRef:
+			a.locate(v)
+			a.inferParam(v.Number, t)
+		case *ast.FuncCall:
+			if funcCallName(v) != "unnest" || len(listItems(v.Args)) != 1 {
+				continue
+			}
+			pr, ok := v.Args.Items[0].(*ast.ParamRef)
+			if !ok {
+				continue
+			}
+			element := a.exprOf(t)
+			if element == nil {
+				continue
+			}
+			list := a.lookupType(core.Array(element.WithNullable(false)))
+			list.sourceAttributeOID, list.sourceTableAlias = t.sourceAttributeOID, t.sourceTableAlias
+			a.locate(pr)
+			a.inferParam(pr.Number, list)
+		}
+	}
+	return nil
+}
+
+// selectedValues is the VALUES list a "SELECT * FROM (VALUES ...)" selects
+// everything from, and nil for any other query.
+func selectedValues(sel *ast.SelectStmt) *ast.List {
+	targets := listItems(sel.TargetList)
+	from := listItems(sel.FromClause)
+	if len(targets) != 1 || len(from) != 1 || sel.WhereClause != nil || sel.GroupClause != nil {
+		return nil
+	}
+	rt, ok := targets[0].(*ast.ResTarget)
+	if !ok || !isStarRef(rt.Val) {
+		return nil
+	}
+	rs, ok := from[0].(*ast.RangeSubselect)
+	if !ok {
+		return nil
+	}
+	sub, ok := rs.Subquery.(*ast.SelectStmt)
+	if !ok || len(listItems(sub.ValuesLists)) == 0 {
+		return nil
+	}
+	return sub.ValuesLists
 }
 
 func (a *analyzer) bindValue(rel scopeRel, target *core.ClassColumn, v ast.Node) error {

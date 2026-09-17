@@ -17,6 +17,9 @@ type scopeRel struct {
 	// cols is the catalog's column list, held as-is rather than copied into a
 	// scope-local column type.
 	cols []core.ClassColumn
+	// values marks a relation a VALUES list produces, whose column names
+	// are the engine's to give.
+	values bool
 	// causes says, by column name, why a column of a derived relation has
 	// no type, for a strict dialect's error.
 	causes map[string]string
@@ -152,6 +155,7 @@ func (a *analyzer) bindRangeSubselect(rs *ast.RangeSubselect) (scopeRel, error) 
 		alias = *rs.Alias.Aliasname
 	}
 	rel := sub.derivedRel(alias)
+	rel.values = len(listItems(sel.ValuesLists)) > 0
 	if rs.Alias != nil {
 		renameColumns(&rel, rs.Alias.Colnames)
 	}

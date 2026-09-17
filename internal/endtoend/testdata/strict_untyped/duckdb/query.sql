@@ -24,3 +24,7 @@ SELECT s.t FROM (SELECT tags[1] AS t FROM users) s;
 
 -- name: UntypedCteColumn :many
 WITH t(y) AS (SELECT tags[1] AS x FROM users) SELECT y FROM t;
+
+-- name: UntypedInsertParam :exec
+INSERT INTO users (id, name)
+SELECT $1, $2 FROM (SELECT 1 AS one) WHERE frobnicate(one) = $3;
