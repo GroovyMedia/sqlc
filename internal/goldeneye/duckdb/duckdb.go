@@ -241,6 +241,39 @@ var neverNull = map[string]bool{
 	"typeof":      true,
 }
 
+// mayBeNull lists the scalar and window functions whose result can be NULL
+// when no argument is: a lookup that finds nothing, a window row with no
+// neighbour, an aggregate over an empty list. The number is the fewest
+// arguments an overload takes for that to hold — json_type(j) always has an
+// answer, json_type(j, path) has none for a path that is not there.
+var mayBeNull = map[string]int{
+	"aggregate":              2,
+	"array_aggr":             2,
+	"array_aggregate":        2,
+	"array_extract":          2,
+	"array_indexof":          2,
+	"array_position":         2,
+	"json_array_length":      2,
+	"json_extract":           2,
+	"json_extract_path":      2,
+	"json_extract_path_text": 2,
+	"json_extract_string":    2,
+	"json_keys":              2,
+	"json_type":              2,
+	"json_value":             2,
+	"lag":                    1,
+	"lead":                   1,
+	"list_aggr":              2,
+	"list_aggregate":         2,
+	"list_element":           2,
+	"list_extract":           2,
+	"list_indexof":           2,
+	"list_position":          2,
+	"map_extract_value":      2,
+	"nth_value":              2,
+	"try_strptime":           2,
+}
+
 func functionKind(functionType string) string {
 	switch functionType {
 	case "aggregate":
@@ -324,8 +357,9 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 			Kind:    functionKind(row.FunctionType),
 			Returns: returns,
 			// An aggregate over no rows returns NULL — except count,
-			// which returns 0.
-			Nullable: row.FunctionType == "aggregate" && !strings.HasPrefix(row.Name, "count"),
+			// which returns 0 — and so does a lookup that finds nothing.
+			Nullable: (row.FunctionType == "aggregate" && !strings.HasPrefix(row.Name, "count")) ||
+				(mayBeNull[row.Name] > 0 && len(args) >= mayBeNull[row.Name]),
 			// A function's result is NULL when an argument is, except for
 			// the ones that handle NULL themselves.
 			NeverNull: strings.HasPrefix(row.Name, "count") || neverNull[row.Name],
