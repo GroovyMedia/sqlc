@@ -731,26 +731,29 @@ func (a *analyzer) resolveOperator(name string, leftT, rightT exprType) (core.Op
 	leftOID := leftChain[len(leftChain)-1]
 	rightOID := rightChain[len(rightChain)-1]
 
-	for _, ov := range all {
-		if leftOID != 0 && ov.LeftTypeOID != 0 && leftOID != ov.LeftTypeOID {
-			ok, _ := a.cat.CastAllowed(leftOID, ov.LeftTypeOID, "i")
-			if !ok {
-				continue
-			}
-		}
-		if rightOID != 0 && ov.RightTypeOID != 0 && rightOID != ov.RightTypeOID {
-			ok, _ := a.cat.CastAllowed(rightOID, ov.RightTypeOID, "i")
-			if !ok {
-				continue
-			}
-		}
-		if (leftOID == 0) != (ov.LeftTypeOID == 0) {
+	// No overload takes both operands as they are: among the ones the
+	// operands cast to implicitly, the nearest wins, an operand matching
+	// one side counting for more than a cast on it.
+	best := -1
+	bestScore := 0
+	for i, ov := range all {
+		if (leftOID == 0) != (ov.LeftTypeOID == 0) || (rightOID == 0) != (ov.RightTypeOID == 0) {
 			continue
 		}
-		if (rightOID == 0) != (ov.RightTypeOID == 0) {
+		left, ok := a.operandScore(leftChain, ov.LeftTypeOID)
+		if !ok {
 			continue
 		}
-		return ov, nil
+		right, ok := a.operandScore(rightChain, ov.RightTypeOID)
+		if !ok {
+			continue
+		}
+		if score := left + right; best < 0 || score > bestScore {
+			best, bestScore = i, score
+		}
+	}
+	if best >= 0 {
+		return all[best], nil
 	}
 
 	// No dialect declares every operator over every type — extensions add
@@ -770,6 +773,24 @@ func (a *analyzer) resolveOperator(name string, leftT, rightT exprType) (core.Op
 		result = rightOID
 	}
 	return core.OperatorOverload{Name: name, ResultTypeOID: result}, nil
+}
+
+// operandScore rates how an operand, given as its resolution chain, fits
+// one side of an operator: 3 for its own type, 2 for a type along its chain,
+// 0 for a type it casts to implicitly, and false for one it does not.
+func (a *analyzer) operandScore(chain []int64, typeOID int64) (int, bool) {
+	family := chain[len(chain)-1]
+	if family == 0 || typeOID == 0 {
+		return 0, true
+	}
+	switch i := slices.Index(chain, typeOID); {
+	case i == 0:
+		return 3, true
+	case i > 0:
+		return 2, true
+	}
+	ok, _ := a.cat.CastAllowed(family, typeOID, "i")
+	return 0, ok
 }
 
 func (a *analyzer) typeBoolExpr(b *ast.BoolExpr) (exprType, error) {
@@ -823,20 +844,33 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		return exprType{nullable: true}, nil
 	}
 	p := a.pickOverload(overloads, argOIDs)
-	// An argument that is a bare placeholder takes the parameter's type,
-	// unless the parameter is polymorphic and says nothing.
+	generic := a.polymorphicBinding(p, argTypes)
+	// An argument that is a bare placeholder takes the parameter's type: its
+	// own, or the generic type the other arguments bound, at the
+	// parameter's list depth.
 	for i, arg := range args {
 		if i >= len(p.ArgTypes) {
 			break
 		}
-		if a.isPolymorphicOID(p.ArgTypes[i]) {
+		pr, ok := arg.(*ast.ParamRef)
+		if !ok {
 			continue
 		}
-		if err := a.typeOperands(arg, exprType{typeOID: p.ArgTypes[i]}); err != nil {
+		dims, polymorphic := a.polymorphicDims(p.ArgTypes[i])
+		var t exprType
+		switch {
+		case !polymorphic:
+			t = exprType{typeOID: p.ArgTypes[i]}
+		case generic != nil:
+			t = a.lookupType(listOf(generic, dims))
+		default:
+			continue
+		}
+		if err := a.typeOperands(pr, t); err != nil {
 			return exprType{}, err
 		}
 	}
-	ret := a.returnType(p, argTypes)
+	ret := a.returnType(p, argTypes, generic)
 	// A result that depends on an argument's value is spelled by the seed
 	// as a template over the arguments, filled in from the call.
 	if computed := a.returnTemplate(p, args, argTypes); computed != nil {
@@ -847,6 +881,15 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		ret.nullable = true
 	}
 	return ret, nil
+}
+
+// listOf wraps a type in dims list dimensions.
+func listOf(t *core.TypeExpr, dims int) *core.TypeExpr {
+	t = t.WithNullable(false)
+	for range dims {
+		t = core.Array(t)
+	}
+	return t
 }
 
 // returnTemplate fills a seed's return template — Decimal(18, $2) — from
@@ -893,8 +936,11 @@ func (a *analyzer) returnTemplate(p core.ProcOverload, args []ast.Node, argTypes
 
 // returnType resolves a polymorphic return type — max(anyelement), or a
 // seed's "$2" for the type of the second argument — to the type the call was
-// made with.
-func (a *analyzer) returnType(p core.ProcOverload, argTypes []exprType) exprType {
+// made with. A seed relates a polymorphic parameter to the result by list
+// depth: unnest(any[]) returns any, the element of its argument, and
+// array_agg(any) returns any[], a list of it; generic is that element, as
+// polymorphicBinding found it.
+func (a *analyzer) returnType(p core.ProcOverload, argTypes []exprType, generic *core.TypeExpr) exprType {
 	if p.ReturnTypeOID == 0 || len(argTypes) == 0 {
 		return exprType{typeOID: p.ReturnTypeOID}
 	}
@@ -908,10 +954,42 @@ func (a *analyzer) returnType(p core.ProcOverload, argTypes []exprType) exprType
 		}
 		return exprType{}
 	}
-	if isPolymorphic(name) && (argTypes[0].typeOID != 0 || argTypes[0].expr != nil) {
+	dims, ok := a.polymorphicDims(p.ReturnTypeOID)
+	if !ok {
+		return exprType{typeOID: p.ReturnTypeOID}
+	}
+	if generic != nil {
+		return a.lookupType(listOf(generic, dims))
+	}
+	if argTypes[0].typeOID != 0 || argTypes[0].expr != nil {
 		return exprType{typeOID: argTypes[0].typeOID, expr: argTypes[0].expr}
 	}
 	return exprType{typeOID: p.ReturnTypeOID}
+}
+
+// polymorphicBinding is the type an overload's polymorphic parameters stand
+// for, read from the first argument in such a position that has a type:
+// the argument's own type for any, its element for any[]. It is nil when
+// no argument says.
+func (a *analyzer) polymorphicBinding(p core.ProcOverload, argTypes []exprType) *core.TypeExpr {
+	for i, argT := range argTypes {
+		if i >= len(p.ArgTypes) {
+			break
+		}
+		dims, ok := a.polymorphicDims(p.ArgTypes[i])
+		if !ok {
+			continue
+		}
+		t := a.exprOf(argT)
+		if t == nil || t.ArrayDims() < dims {
+			continue
+		}
+		for range dims {
+			t = t.Element()
+		}
+		return t.WithNullable(false)
+	}
+	return nil
 }
 
 // argIndex reads a seed's "$n" pseudo-type as the zero-based index of the
@@ -934,19 +1012,39 @@ func argIndex(typeName string) (int, bool) {
 	return n - 1, true
 }
 
-// isPolymorphicOID reports whether a parameter type accepts any argument.
-func (a *analyzer) isPolymorphicOID(oid int64) bool {
+// polymorphicDims reports whether a parameter or result type accepts any
+// type, and at what list depth: 0 for any, 1 for any[].
+func (a *analyzer) polymorphicDims(oid int64) (int, bool) {
 	if oid == 0 {
-		return true
+		return 0, true
 	}
 	name, err := a.cat.TypeName(oid)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	if _, ok := argIndex(name); ok {
-		return true
+		return 0, true
 	}
-	return isPolymorphic(name)
+	if isPolymorphic(name) {
+		return 0, true
+	}
+	if name != core.ArrayTypeName {
+		return 0, false
+	}
+	t, err := a.cat.TypeExprOf(oid)
+	if err != nil || !isPolymorphic(t.Innermost().Name) {
+		return 0, false
+	}
+	return t.ArrayDims(), true
+}
+
+// listDims is the list depth of a type: 0 for anything but a list.
+func (a *analyzer) listDims(oid int64) int {
+	t, err := a.cat.TypeExprOf(oid)
+	if err != nil {
+		return 0
+	}
+	return t.ArrayDims()
 }
 
 func isPolymorphic(typeName string) bool {
@@ -962,17 +1060,18 @@ func isPolymorphic(typeName string) bool {
 // pickOverload chooses the overload whose parameters the call's arguments
 // match best: an exact type match on a parameter beats a match on the
 // argument's family, which beats a polymorphic parameter, which beats a
-// mismatch, and any overload of the right arity beats one of the wrong
-// arity.
+// parameter the argument casts to implicitly, which beats one it does not,
+// and any overload of the right arity beats one of the wrong arity.
 func (a *analyzer) pickOverload(overloads []core.ProcOverload, argTypes []int64) core.ProcOverload {
 	best := -1
-	bestScore := -1
+	bestScore := 0
 	chains := make([][]int64, len(argTypes))
 	for j, oid := range argTypes {
 		if oid != 0 {
 			chains[j] = a.cat.ResolutionChain(oid)
 		}
 	}
+	castable := map[[2]int64]bool{}
 	for i := range overloads {
 		ov := &overloads[i]
 		if len(ov.ArgTypes) != len(argTypes) {
@@ -985,11 +1084,28 @@ func (a *analyzer) pickOverload(overloads []core.ProcOverload, argTypes []int64)
 				score += 3
 			case oid != 0 && slices.Contains(chains[j], ov.ArgTypes[j]):
 				score += 2
-			case a.isPolymorphicOID(ov.ArgTypes[j]):
-				score += 1
+			default:
+				dims, polymorphic := a.polymorphicDims(ov.ArgTypes[j])
+				switch {
+				case polymorphic && (oid == 0 || a.listDims(oid) >= dims):
+					// A list parameter takes a list, or an argument whose
+					// type is not known.
+					score++
+				case polymorphic || oid == 0:
+				default:
+					pair := [2]int64{chains[j][len(chains[j])-1], a.familyOID(ov.ArgTypes[j])}
+					ok, seen := castable[pair]
+					if !seen {
+						ok, _ = a.cat.CastAllowed(pair[0], pair[1], "i")
+						castable[pair] = ok
+					}
+					if !ok {
+						score -= 2
+					}
+				}
 			}
 		}
-		if score > bestScore {
+		if best < 0 || score > bestScore {
 			best, bestScore = i, score
 		}
 	}
