@@ -154,6 +154,13 @@ type Settings struct {
 	// by its affinity.
 	Alias string `json:"alias,omitempty"`
 
+	// BaseAliases names the aliases in types.jsonl that are types of their
+	// own standing on the type they alias, whatever Alias says of the
+	// rest. DuckDB's catalog lists json as a spelling of varchar, but it
+	// reports a column declared JSON as JSON, and codegen tells the two
+	// apart.
+	BaseAliases []string `json:"base_aliases,omitempty"`
+
 	// fsys is the dialect directory the settings were read from.
 	fsys fs.FS
 }
@@ -571,7 +578,8 @@ func (b *builder) addAlias(name string, typeOID int64, category string) error {
 		return nil
 	}
 	spec := core.TypeSpec{Name: key, Typtype: "b", Category: category, DialectOID: b.dialectOID}
-	if b.settings.Alias == "base" {
+	base := b.settings.baseAlias(key)
+	if base {
 		spec.BaseOID = typeOID
 	} else {
 		spec.CanonicalOID = typeOID
@@ -582,12 +590,26 @@ func (b *builder) addAlias(name string, typeOID int64, category string) error {
 	}
 	// A record naming the alias means the type it stands for, unless the
 	// alias is a type of its own.
-	if b.settings.Alias == "base" {
+	if base {
 		b.oids[key] = oid
 	} else {
 		b.oids[key] = typeOID
 	}
 	return nil
+}
+
+// baseAlias reports whether an alias is a type of its own standing on the
+// type it aliases, rather than another spelling of it.
+func (s Settings) baseAlias(name string) bool {
+	if s.Alias == "base" {
+		return true
+	}
+	for _, alias := range s.BaseAliases {
+		if strings.EqualFold(alias, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *builder) createType(name, category string, baseOID int64) (int64, error) {

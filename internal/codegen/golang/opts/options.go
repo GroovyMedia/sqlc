@@ -65,6 +65,9 @@ func Parse(req *plugin.GenerateRequest) (*Options, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateEngine(req.Settings.GetEngine(), options); err != nil {
+		return nil, err
+	}
 	global, err := parseGlobalOpts(req)
 	if err != nil {
 		return nil, err
@@ -143,6 +146,27 @@ func parseOpts(req *plugin.GenerateRequest) (*Options, error) {
 	}
 
 	return &options, nil
+}
+
+// validateEngine checks the SQL package and driver against the engine.
+// DuckDB is driven from Go by github.com/duckdb/duckdb-go/v2 through
+// database/sql and nothing else, so that driver is the default and pgx is
+// refused.
+func validateEngine(engine string, options *Options) error {
+	if engine != "duckdb" {
+		return nil
+	}
+	if options.SqlPackage != "" && options.SqlPackage != SQLPackageStandard {
+		return fmt.Errorf("invalid options: engine duckdb supports sql_package %s only, not %s", SQLPackageStandard, options.SqlPackage)
+	}
+	switch options.SqlDriver {
+	case "":
+		options.SqlDriver = SQLDriverDuckDB
+	case SQLDriverDuckDB:
+	default:
+		return fmt.Errorf("invalid options: engine duckdb supports sql_driver %s only, not %s", SQLDriverDuckDB, options.SqlDriver)
+	}
+	return nil
 }
 
 func parseGlobalOpts(req *plugin.GenerateRequest) (*GlobalOptions, error) {

@@ -1,6 +1,7 @@
 {
   "dialect": "duckdb",
   "default_schema": "main",
+  "base_aliases": ["json"],
   "const": {
     "integer": "integer",
     "float": "double",

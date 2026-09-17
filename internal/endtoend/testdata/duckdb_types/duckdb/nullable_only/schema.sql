@@ -1,0 +1,9 @@
+CREATE TABLE things (
+  id INTEGER PRIMARY KEY,
+  iv INTERVAL,
+  m MAP(VARCHAR, INTEGER),
+  h HUGEINT,
+  u UUID,
+  f4 FLOAT,
+  st STRUCT(a INTEGER)
+);

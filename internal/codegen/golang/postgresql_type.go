@@ -37,7 +37,7 @@ func parseIdentifierString(name string) (*plugin.Identifier, error) {
 func postgresType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.Column) string {
 	columnType := sdk.DataType(col.Type)
 	notNull := col.NotNull || col.IsArray
-	driver := parseDriver(options.SqlPackage)
+	driver := parseDriver(options)
 	emitPointersForNull := driver.IsPGX() && options.EmitPointersForNullTypes
 	emitPointersForNullEnums := emitPointersForNull
 	if options.EmitPointersForNullEnumTypes != nil {

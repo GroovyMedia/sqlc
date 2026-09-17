@@ -135,24 +135,60 @@ func (v QueryValue) UniqueFields() []Field {
 	return fields
 }
 
+// isSlice reports a Go type that is a slice of values rather than a
+// []byte.
+func isSlice(typ string) bool {
+	return strings.HasPrefix(typ, "[]") && typ != "[]byte"
+}
+
+// param wraps a query argument the driver does not bind as it is: a lib/pq
+// array, or a DuckDB list, JSON message, BLOB or big integer, which the
+// duckdb helpers hand the driver the way it takes them.
+func (v QueryValue) param(typ string, col *plugin.Column, name string) string {
+	switch {
+	case col != nil && col.IsSqlcSlice:
+		return name
+	case v.SQLDriver.IsDuckDB():
+		switch typ {
+		case "json.RawMessage", "[]byte", "*big.Int":
+			return "duckdbParam(" + name + ")"
+		}
+		if isSlice(typ) {
+			return "duckdbListParam(" + name + ")"
+		}
+		return name
+	case isSlice(typ) && !v.SQLDriver.IsPGX():
+		return "pq.Array(" + name + ")"
+	}
+	return name
+}
+
+// scan wraps a scan destination the driver's value does not land in as it
+// is: a lib/pq array, or a DuckDB list, JSON or DECIMAL, which the duckdb
+// helpers convert.
+func (v QueryValue) scan(typ string, col *plugin.Column, name string) string {
+	switch {
+	case v.SQLDriver.IsDuckDB():
+		if helper := duckdbScanner(typ, col); helper != "" {
+			return helper + "(&" + name + ")"
+		}
+		return "&" + name
+	case isSlice(typ) && !v.SQLDriver.IsPGX():
+		return "pq.Array(&" + name + ")"
+	}
+	return "&" + name
+}
+
 func (v QueryValue) Params() string {
 	if v.isEmpty() {
 		return ""
 	}
 	var out []string
 	if v.Struct == nil {
-		if !v.Column.IsSqlcSlice && strings.HasPrefix(v.Typ, "[]") && v.Typ != "[]byte" && !v.SQLDriver.IsPGX() {
-			out = append(out, "pq.Array("+escape(v.Name)+")")
-		} else {
-			out = append(out, escape(v.Name))
-		}
+		out = append(out, v.param(v.Typ, v.Column, escape(v.Name)))
 	} else {
 		for _, f := range v.Struct.Fields {
-			if !f.HasSqlcSlice() && strings.HasPrefix(f.Type, "[]") && f.Type != "[]byte" && !v.SQLDriver.IsPGX() {
-				out = append(out, "pq.Array("+escape(v.VariableForField(f))+")")
-			} else {
-				out = append(out, escape(v.VariableForField(f)))
-			}
+			out = append(out, v.param(f.Type, f.Column, escape(v.VariableForField(f))))
 		}
 	}
 	if len(out) <= 3 {
@@ -205,31 +241,19 @@ func (v QueryValue) HasSqlcSlices() bool {
 func (v QueryValue) Scan() string {
 	var out []string
 	if v.Struct == nil {
-		if strings.HasPrefix(v.Typ, "[]") && v.Typ != "[]byte" && !v.SQLDriver.IsPGX() {
-			out = append(out, "pq.Array(&"+v.Name+")")
-		} else {
-			out = append(out, "&"+v.Name)
-		}
+		out = append(out, v.scan(v.Typ, v.Column, v.Name))
 	} else {
 		for _, f := range v.Struct.Fields {
 
 			// append any embedded fields
 			if len(f.EmbedFields) > 0 {
 				for _, embed := range f.EmbedFields {
-					if strings.HasPrefix(embed.Type, "[]") && embed.Type != "[]byte" && !v.SQLDriver.IsPGX() {
-						out = append(out, "pq.Array(&"+v.Name+"."+f.Name+"."+embed.Name+")")
-					} else {
-						out = append(out, "&"+v.Name+"."+f.Name+"."+embed.Name)
-					}
+					out = append(out, v.scan(embed.Type, embed.Column, v.Name+"."+f.Name+"."+embed.Name))
 				}
 				continue
 			}
 
-			if strings.HasPrefix(f.Type, "[]") && f.Type != "[]byte" && !v.SQLDriver.IsPGX() {
-				out = append(out, "pq.Array(&"+v.Name+"."+f.Name+")")
-			} else {
-				out = append(out, "&"+v.Name+"."+f.Name)
-			}
+			out = append(out, v.scan(f.Type, f.Column, v.Name+"."+f.Name))
 		}
 	}
 	if len(out) <= 3 {

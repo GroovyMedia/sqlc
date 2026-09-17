@@ -100,6 +100,7 @@ func buildStructs(req *plugin.GenerateRequest, options *opts.Options) []Struct {
 					Type:    goType(req, options, column),
 					Tags:    tags,
 					Comment: column.Comment,
+					Column:  column,
 				})
 			}
 			structs = append(structs, s)
@@ -227,7 +228,7 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, enums []En
 			Comments:     comments,
 			Table:        query.InsertIntoTable,
 		}
-		sqlpkg := parseDriver(options.SqlPackage)
+		sqlpkg := parseDriver(options)
 
 		qpl := int(*options.QueryParameterLimit)
 
@@ -297,6 +298,7 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, enums []En
 				Typ:            qualifyType(goType(req, options, c), models, qualifier),
 				SQLDriver:      sqlpkg,
 				ModelQualifier: qualifier,
+				Column:         c,
 			}
 		} else if putOutColumns(query) {
 			var gs *Struct

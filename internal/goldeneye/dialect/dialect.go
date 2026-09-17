@@ -140,6 +140,27 @@ func ReadTypes(dir string) ([]Type, error) {
 	return types, nil
 }
 
+// Settings is the part of a dialect's hand-written dialect.json a check
+// reads: the aliases the analysis reports as types of their own rather
+// than as the type they alias.
+type Settings struct {
+	BaseAliases []string `json:"base_aliases,omitempty"`
+}
+
+// ReadSettings reads the dialect.json of a dialect directory, ignoring
+// the fields a check has no use for.
+func ReadSettings(dir string) (Settings, error) {
+	blob, err := os.ReadFile(filepath.Join(dir, SettingsFile))
+	if err != nil {
+		return Settings{}, err
+	}
+	var settings Settings
+	if err := json.Unmarshal(blob, &settings); err != nil {
+		return Settings{}, fmt.Errorf("%s: %w", filepath.Join(dir, SettingsFile), err)
+	}
+	return settings, nil
+}
+
 // Dir returns the dialect directory of an engine,
 // internal/engine/<engine>/dialect, found relative to this source file so
 // the working directory does not matter.
