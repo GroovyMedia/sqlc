@@ -1083,6 +1083,7 @@ func (a *application) apply(parent ast.Node, name string, iter *iterator, n ast.
 		a.apply(n, "WhereClause", nil, n.WhereClause)
 		a.apply(n, "GroupClause", nil, n.GroupClause)
 		a.apply(n, "HavingClause", nil, n.HavingClause)
+		a.apply(n, "QualifyClause", nil, n.QualifyClause)
 		a.apply(n, "WindowClause", nil, n.WindowClause)
 		a.apply(n, "ValuesLists", nil, n.ValuesLists)
 		a.apply(n, "SortClause", nil, n.SortClause)

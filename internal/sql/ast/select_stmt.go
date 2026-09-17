@@ -25,6 +25,10 @@ type SelectStmt struct {
 	All            bool         `json:"all"`
 	Larg           *SelectStmt  `json:"larg,omitempty"`
 	Rarg           *SelectStmt  `json:"rarg,omitempty"`
+	// QualifyClause filters the rows after the window functions are
+	// evaluated, the way HAVING filters after the aggregates: DuckDB's and
+	// BigQuery's QUALIFY.
+	QualifyClause Node `json:"qualify_clause,omitempty"`
 	// TableHints is the text inside a MySQL optimizer-hint comment
 	// (SELECT /*+ MAX_EXECUTION_TIME(1000) */ ...). The compiler ignores
 	// hints; printing keeps them because they change how the server runs
@@ -152,6 +156,13 @@ func (n *SelectStmt) Format(buf *TrackedBuffer, d format.Dialect) {
 		buf.Line()
 		buf.WriteString("HAVING ")
 		buf.condition(n.HavingClause, d)
+	}
+
+	if set(n.QualifyClause) {
+		buf.beforeClause(n.QualifyClause, d)
+		buf.Line()
+		buf.WriteString("QUALIFY ")
+		buf.condition(n.QualifyClause, d)
 	}
 
 	if items(n.SortClause) {
