@@ -1373,12 +1373,15 @@ func (a *analyzer) typeTypeCast(c *ast.TypeCast) (exprType, error) {
 		if err := a.typeOperands(pr, t); err != nil {
 			return exprType{}, err
 		}
+		// A TRY_CAST is NULL where the cast would fail, whatever it
+		// was given.
+		t.nullable = t.nullable || c.Try
 		return t, nil
 	}
 	arg, err := a.typeExpr(c.Arg)
 	if err != nil {
 		return exprType{}, err
 	}
-	t.nullable = t.nullable || arg.nullable
+	t.nullable = t.nullable || arg.nullable || c.Try
 	return t, nil
 }

@@ -8,6 +8,9 @@ type TypeCast struct {
 	Arg      Node      `json:"arg,omitempty"`
 	TypeName *TypeName `json:"type_name,omitempty"`
 	Location int       `json:"location"`
+
+	// Try marks a TRY_CAST, which is NULL where a CAST would fail.
+	Try bool `json:"try,omitempty"`
 }
 
 func (n *TypeCast) Pos() int {

@@ -1,0 +1,106 @@
+[
+  {
+    "name": "TryCastNotNull",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "TryCastNullable",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "b",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "CastNotNull",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "s",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Try",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "z",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "CastOverTry",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "z",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  }
+]

@@ -722,6 +722,11 @@ func (c *cc) convertOperator(e *dw.OperatorExpression) ast.Node {
 		return c.call("array_slice", e, e.Operands...)
 	case dw.StructExtract:
 		return c.call("struct_extract", e, e.Operands...)
+	case dw.OperatorTry:
+		// TRY(expr) is expr, or NULL where expr would have raised an
+		// error. The dialect seeds it as a function, since DuckDB's
+		// catalog does not list it.
+		return c.call("try", e, e.Operands...)
 	default:
 		return c.todo(e)
 	}
@@ -809,6 +814,7 @@ func (c *cc) convertConjunction(e *dw.ConjunctionExpression) ast.Node {
 func (c *cc) convertCast(e *dw.CastExpression) ast.Node {
 	cast := &ast.TypeCast{
 		Arg:      c.convertExpr(e.Child),
+		Try:      e.TryCast,
 		Location: c.loc(e),
 	}
 	switch {
