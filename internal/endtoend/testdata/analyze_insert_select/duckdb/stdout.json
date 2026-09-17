@@ -56,7 +56,7 @@
       {
         "number": 2,
         "column": {
-          "name": "id",
+          "name": "max_id",
           "type": {
             "name": "bigint"
           },

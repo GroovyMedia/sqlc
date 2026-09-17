@@ -100,7 +100,7 @@
       {
         "number": 1,
         "column": {
-          "name": "id",
+          "name": "ids",
           "type": {
             "name": "array",
             "args": [
@@ -163,7 +163,7 @@
       {
         "number": 1,
         "column": {
-          "name": "",
+          "name": "tag",
           "type": {
             "name": "varchar"
           }

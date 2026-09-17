@@ -748,6 +748,7 @@ func (a *analyzer) inferUnnestParam(sel *ast.SelectStmt, testT exprType) {
 	}
 	list := a.lookupType(listOf(element, 1))
 	list.nullable = testT.nullable
+	list.columnNotNull = testT.columnNotNull
 	list.sourceClassOID = testT.sourceClassOID
 	list.sourceAttributeOID = testT.sourceAttributeOID
 	list.sourceTableAlias = testT.sourceTableAlias

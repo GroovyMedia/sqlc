@@ -184,7 +184,7 @@
       {
         "number": 1,
         "column": {
-          "name": "ts",
+          "name": "since",
           "type": {
             "name": "timestamp with time zone"
           },
@@ -248,7 +248,7 @@
       {
         "number": 1,
         "column": {
-          "name": "",
+          "name": "fallback",
           "type": {
             "name": "integer"
           }
@@ -257,7 +257,7 @@
       {
         "number": 2,
         "column": {
-          "name": "",
+          "name": "when_ok",
           "type": {
             "name": "integer"
           }
@@ -266,7 +266,7 @@
       {
         "number": 3,
         "column": {
-          "name": "",
+          "name": "floor",
           "type": {
             "name": "decimal",
             "args": [
@@ -283,7 +283,7 @@
       {
         "number": 4,
         "column": {
-          "name": "",
+          "name": "needle",
           "type": {
             "name": "integer"
           }
