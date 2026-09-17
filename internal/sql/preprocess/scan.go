@@ -44,6 +44,18 @@ func (l *lexer) scan(start, end int) []occurrence {
 			})
 			i = j
 
+		case c == '$' && l.d.DollarName && isIdentStart(l.at(i+1)):
+			// A dollar quote was skipped above, so this $ starts a name.
+			j := l.identEnd(i + 1)
+			out = append(out, occurrence{
+				kind:  kindArg,
+				start: i,
+				end:   j,
+				name:  l.src[i+1 : j],
+				ident: l.src[i:j],
+			})
+			i = j
+
 		case c == '$' && l.d.DollarNumber && isDigit(l.at(i+1)):
 			j := i + 1
 			for j < len(l.src) && isDigit(l.src[j]) {
@@ -112,6 +124,13 @@ func (l *lexer) sqlcCall(start, afterSqlc int) (occurrence, int, bool) {
 	case "narg":
 		occ.kind = kindNarg
 	case "slice":
+		if l.d.NoSlice {
+			occ.err = &sqlerr.Error{
+				Message:  "sqlc.slice() is not supported by this engine: a Go slice binds as one list value, so pass it with sqlc.arg() and compare with = ANY(sqlc.arg(name))",
+				Location: start,
+			}
+			return occ, occ.end, true
+		}
 		occ.kind = kindSlice
 	case "embed":
 		occ.kind = kindEmbed

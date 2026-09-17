@@ -1,0 +1,1 @@
+1:37: sqlc.slice() is not supported by this engine: a Go slice binds as one list value, so pass it with sqlc.arg() and compare with = ANY(sqlc.arg(name))

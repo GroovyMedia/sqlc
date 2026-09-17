@@ -61,6 +61,16 @@ type Dialect struct {
 	// identifiers. It decides the case of a parameter named by a bare
 	// reference, e.g. sqlc.arg(FooBar).
 	FoldIdentifier bool
+
+	// DollarName reports whether $name is a named bind parameter. It is
+	// rewritten like @name: to a numbered placeholder that the parameter
+	// set names, so a name used twice binds one value.
+	DollarName bool
+
+	// NoSlice reports that sqlc.slice() is refused with an error. A dialect
+	// that binds a Go slice as a single list value has nothing to expand,
+	// so the list is passed with sqlc.arg() instead.
+	NoSlice bool
 }
 
 var dialects = map[config.Engine]Dialect{
@@ -95,6 +105,22 @@ var dialects = map[config.Engine]Dialect{
 		Question:  true,
 		Backtick:  true,
 		Backslash: true,
+	},
+	// DuckDB lexes like PostgreSQL and binds with $1, ? and $name. It does
+	// not mix $name with numbered placeholders, so $name is rewritten to a
+	// number as @name is and every placeholder ends up numbered. A Go
+	// slice binds as one LIST value, so sqlc.slice() is refused: pass the
+	// list with sqlc.arg() and compare with "= ANY(sqlc.arg(name))".
+	config.EngineDuckDB: {
+		Style:              StyleDollar,
+		AtSign:             true,
+		DollarQuote:        true,
+		DollarNumber:       true,
+		DollarName:         true,
+		Question:           true,
+		NestedBlockComment: true,
+		FoldIdentifier:     true,
+		NoSlice:            true,
 	},
 }
 

@@ -1,0 +1,16 @@
+[
+  {
+    "start": 0,
+    "end": 76,
+    "dollar": true,
+    "params": [
+      {
+        "number": 1,
+        "location": 73,
+        "origin": 73,
+        "name": "age",
+        "named": true
+      }
+    ]
+  }
+]

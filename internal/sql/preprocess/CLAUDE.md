@@ -12,6 +12,7 @@ parsers, converters and `astutils` traversals only ever deal with SQL.
 | `sqlc.slice(name)` | the placeholder wrapped in `/*SLICE:name*/` |
 | `sqlc.embed(table)` | `table.*` |
 | `@name` | the native placeholder, on dialects where `@` is sqlc syntax |
+| `$name` | the native placeholder, on dialects where `$name` is a named placeholder |
 
 Native placeholders by dialect:
 
@@ -20,6 +21,14 @@ Native placeholders by dialect:
 | postgresql | `$1` | sqlc syntax |
 | mysql | `?` | user variable, left alone |
 | sqlite | `?1` | sqlc syntax |
+| duckdb | `$1` | sqlc syntax |
+
+DuckDB also accepts `$name` and `?`, but does not mix `$name` with numbered
+placeholders, so both are rewritten to `$N`: a `$name` is tracked like
+`@name` (one number per name), and a `?` is written with the number it was
+given so it cannot collide with a rewritten placeholder. DuckDB binds a Go
+slice as one `LIST` value, so `sqlc.slice()` is refused there with an error
+that points at `sqlc.arg()`.
 
 GoogleSQL and ClickHouse are deliberately absent. They handle their own
 parameter syntax, so `File` returns their source unchanged and sqlc syntax is

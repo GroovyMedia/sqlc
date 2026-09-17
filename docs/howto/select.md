@@ -391,3 +391,15 @@ func (q *Queries) ListAuthorsByIDs(ctx context.Context, ids []int64) ([]Author, 
 	return items, nil
 }
 ```
+
+### DuckDB
+
+DuckDB binds a Go slice as a single `LIST` value, so there is nothing to
+expand and `sqlc.slice()` is not available: sqlc reports an error for it. Pass
+the list with `sqlc.arg()` and compare with `= ANY(...)` instead.
+
+```sql
+-- name: ListAuthorsByIDs :many
+SELECT * FROM authors
+WHERE id = ANY(sqlc.arg(ids));
+```
