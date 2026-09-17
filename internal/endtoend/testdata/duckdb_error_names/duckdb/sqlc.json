@@ -1,0 +1,16 @@
+{
+  "version": "2",
+  "sql": [
+    {
+      "engine": "duckdb",
+      "schema": "schema.sql",
+      "queries": ["query.sql", "unsupported.sql"],
+      "gen": {
+        "go": {
+          "package": "querytest",
+          "out": "go"
+        }
+      }
+    }
+  ]
+}

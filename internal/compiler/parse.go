@@ -28,16 +28,16 @@ func (c *Compiler) parseQuery(stmt ast.Node, pp *preprocess.Result, o opts.Parse
 	// The preprocessor already replaced every sqlc.* construct with native SQL
 	// and recorded what it replaced.
 	pre := pp.Statement(raw.StmtLocation)
-	if pre.Err != nil {
-		return nil, pre.Err
-	}
 
 	// Engines number bind parameters in whatever order they convert the AST.
 	// Restore the numbering the preprocessor assigned in source order.
-	renumberParams(raw, pre.Numbers)
+	renumberParams(raw, pre)
 
 	if c.coreCatalog != nil {
 		return c.parseQueryCore(raw, pp.Text, pre)
+	}
+	if pre.Err != nil {
+		return nil, pre.Err
 	}
 
 	ctx := context.Background()
@@ -147,8 +147,10 @@ func (c *Compiler) parseQuery(stmt ast.Node, pp *preprocess.Result, o opts.Parse
 
 // renumberParams applies the parameter numbers the preprocessor assigned,
 // matching each node by the location of its placeholder in the query text.
-func renumberParams(raw *ast.RawStmt, numbers map[int]int) {
-	if len(numbers) == 0 {
+// A placeholder the query named, as @name or sqlc.arg(name), carries that
+// name too, so an error about it can say what the query wrote.
+func renumberParams(raw *ast.RawStmt, pre *preprocess.Statement) {
+	if len(pre.Numbers) == 0 {
 		return
 	}
 	astutils.Walk(astutils.VisitorFunc(func(node ast.Node) {
@@ -156,8 +158,11 @@ func renumberParams(raw *ast.RawStmt, numbers map[int]int) {
 		if !ok {
 			return
 		}
-		if n, ok := numbers[ref.Location]; ok {
+		if n, ok := pre.Numbers[ref.Location]; ok {
 			ref.Number = n
+			if name, ok := pre.Params.NameFor(n); ok && name != "" {
+				ref.Name = name
+			}
 		}
 	}), raw)
 }

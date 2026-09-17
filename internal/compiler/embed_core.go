@@ -67,7 +67,10 @@ func (c *Compiler) embedCore(raw *ast.RawStmt, res core.PrepareResult, embeds pr
 			ok = err == nil
 		}
 		if !ok {
-			return nil, fmt.Errorf("unable to resolve table with %q", embed.Orig())
+			return nil, &sqlerr.Error{
+				Message:  fmt.Sprintf("unable to resolve table with %q", embed.Orig()),
+				Location: embed.Location,
+			}
 		}
 		// The model's fields are typed after the schema, so a NOT NULL
 		// column the query can still leave NULL has no field to hold it:

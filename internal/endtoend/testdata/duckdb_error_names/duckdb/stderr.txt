@@ -1,0 +1,8 @@
+# package querytest
+unsupported.sql:8:1: Parser Error: Duplicate CTE name "x"
+query.sql:1:1: Gap: could not determine data type of parameter $2
+query.sql:5:1: Mix: can not mix $1 format with ? format
+query.sql:8:35: UnknownMacro: function "sqlc.foo" does not exist
+query.sql:11:8: EmbedMissing: unable to resolve table with "sqlc.embed(nope)"
+query.sql:14:49: Untyped: parameter @needle has no type: unknown function "frobnicate"; cast it to the type it holds, as in @needle::BIGINT
+query.sql:17:37: Conflict: parameter @v is used as varchar and as bigint; cast it to one type, as in @v::BIGINT

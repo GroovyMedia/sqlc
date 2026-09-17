@@ -31,6 +31,12 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	if err != nil {
 		return nil, err
 	}
+	// From here on an error names the query it is about, so that it can be
+	// told apart in a file of many. A statement with no name is skipped,
+	// but not one that misuses sqlc syntax.
+	if pre.Err != nil {
+		return nil, queryError(name, pre.Err)
+	}
 	if name == "" {
 		return nil, nil
 	}
@@ -49,7 +55,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	}
 
 	if pre.ParamErr != nil {
-		return nil, pre.ParamErr
+		return nil, queryError(name, pre.ParamErr)
 	}
 	namedParams := pre.Params
 	expanded := rawSQL
@@ -60,14 +66,14 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	case *ast.SelectStmt, *ast.InsertStmt, *ast.UpdateStmt, *ast.DeleteStmt:
 		res, err := coreanalyzer.Prepare(c.coreCatalog, raw)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, queryError(name, err)
 		}
 		for _, col := range res.Columns {
 			cols = append(cols, coreColumn(col))
 		}
 		cols, err = c.embedCore(raw, res, pre.Embeds, cols)
 		if err != nil {
-			return nil, err
+			return nil, queryError(name, err)
 		}
 		for _, p := range res.Parameters {
 			params = append(params, Parameter{Number: p.Number, Column: coreParamColumn(p, namedParams)})
@@ -109,6 +115,15 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	}, nil
 }
 
+// queryError prefixes an error with the name of the query it is about. The
+// error is wrapped, so its position survives.
+func queryError(name string, err error) error {
+	if name == "" {
+		return err
+	}
+	return fmt.Errorf("%s: %w", name, err)
+}
+
 // unanalyzedParam reports the first placeholder, in source order, that the
 // analyzer did not see. The engine converts syntax it has no node for into
 // a TODO, and a placeholder inside one is invisible to the analyzer: the
@@ -128,10 +143,10 @@ func unanalyzedParam(name string, pre *preprocess.Statement, params []core.Param
 		if pname, ok := pre.Params.NameFor(number); ok && pname != "" {
 			ref = "@" + pname
 		}
-		return &sqlerr.Error{
-			Message:  fmt.Sprintf("%s: parameter %s is inside an expression sqlc cannot analyze", name, ref),
+		return queryError(name, &sqlerr.Error{
+			Message:  fmt.Sprintf("parameter %s is inside an expression sqlc cannot analyze", ref),
 			Location: offset,
-		}
+		})
 	}
 	return nil
 }
