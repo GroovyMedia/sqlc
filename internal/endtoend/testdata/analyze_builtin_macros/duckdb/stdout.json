@@ -1,0 +1,196 @@
+[
+  {
+    "name": "AppendReason",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "runs"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ListMacros",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "appended",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "integer"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "prepended",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "joined",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "total",
+        "type": {
+          "name": "hugeint",
+          "nullable": true
+        }
+      },
+      {
+        "name": "lowest",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "n_scores",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "mean_weight",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      },
+      {
+        "name": "reason_head",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "halved",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      },
+      {
+        "name": "remainder",
+        "type": {
+          "name": "double"
+        }
+      },
+      {
+        "name": "next_day",
+        "type": {
+          "name": "timestamp"
+        }
+      },
+      {
+        "name": "days",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "FilterByMacros",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "runs"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "reason",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "sep",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "divisor",
+          "type": {
+            "name": "double"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "AggregateMacros",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "reasons",
+        "type": {
+          "name": "json",
+          "nullable": true
+        }
+      },
+      {
+        "name": "geo",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      },
+      {
+        "name": "weighted",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  }
+]
