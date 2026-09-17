@@ -1,0 +1,68 @@
+[
+  {
+    "name": "InsertPageIfMissing",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "pages"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "slug",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "pages"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "hits",
+          "type": {
+            "name": "integer",
+            "nullable": true
+          },
+          "table": "pages"
+        }
+      }
+    ]
+  },
+  {
+    "name": "CopyPages",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "hits",
+          "type": {
+            "name": "integer",
+            "nullable": true
+          },
+          "table": "pages"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "pages"
+        }
+      }
+    ]
+  }
+]
