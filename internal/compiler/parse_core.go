@@ -57,7 +57,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	case *ast.SelectStmt, *ast.InsertStmt, *ast.UpdateStmt, *ast.DeleteStmt:
 		res, err := coreanalyzer.Prepare(c.coreCatalog, raw)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		for _, col := range res.Columns {
 			cols = append(cols, coreColumn(col))

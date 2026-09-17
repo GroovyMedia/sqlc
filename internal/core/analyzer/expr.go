@@ -24,6 +24,10 @@ type exprType struct {
 	sourceClassOID     int64
 	sourceAttributeOID int64
 	sourceTableAlias   string
+	// untyped says why an expression has no type when the expression
+	// itself is the reason: syntax sqlc has no node for, a function the
+	// dialect does not list. A strict dialect reports it.
+	untyped string
 }
 
 func (a *analyzer) typeExpr(n ast.Node) (exprType, error) {
@@ -32,7 +36,7 @@ func (a *analyzer) typeExpr(n ast.Node) (exprType, error) {
 		return exprType{}, nil
 
 	case *ast.TODO:
-		return exprType{}, nil
+		return exprType{untyped: unsupported(e)}, nil
 
 	case *ast.A_Const:
 		return a.typeConst(e)
@@ -133,7 +137,7 @@ func (a *analyzer) typeConst(c *ast.A_Const) (exprType, error) {
 	case *ast.Boolean:
 		return a.boolType(false)
 	case *ast.Null, nil:
-		return exprType{nullable: true}, nil
+		return exprType{nullable: true, untyped: "NULL has no type"}, nil
 	}
 	return exprType{}, fmt.Errorf("typeConst: unsupported %T", c.Val)
 }
@@ -201,6 +205,7 @@ func flattenFields(fields *ast.List) []string {
 }
 
 func (a *analyzer) typeParamRef(p *ast.ParamRef) (exprType, error) {
+	a.locate(p)
 	cur, ok := a.params[p.Number]
 	if !ok {
 		cur = core.Parameter{Number: p.Number, Name: p.Name}
@@ -215,6 +220,9 @@ func (a *analyzer) inferParam(number int, t exprType) {
 		cur = core.Parameter{Number: number}
 	}
 	typed := cur.TypeOID == 0 && cur.Type == nil && (t.typeOID != 0 || t.expr != nil)
+	if !typed {
+		a.noteConflict(number, cur, t)
+	}
 	if typed {
 		cur.TypeOID = t.typeOID
 		cur.DataType, cur.IsArray = a.typeNameOf(t)
@@ -316,6 +324,8 @@ func (a *analyzer) typeAExpr(e *ast.A_Expr) (exprType, error) {
 		a.inferParam(pr.Number, leftT)
 		a.nameParamAfter(pr.Number, e.Lexpr)
 	}
+	a.noteCause(e.Lexpr, rightT)
+	a.noteCause(e.Rexpr, leftT)
 
 	overload, err := a.resolveOperator(opName, leftT, rightT)
 	if err != nil {
@@ -607,10 +617,11 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 		}
 		return a.boolType(false)
 	}
-	cols, err := a.subqueryColumns(sel)
+	sub, err := a.subquery(sel)
 	if err != nil {
 		return exprType{}, err
 	}
+	cols := sub.columns
 	switch e.SubLinkType {
 	case ast.EXPR_SUBLINK, ast.ARRAY_SUBLINK:
 		if len(cols) == 0 {
@@ -619,6 +630,9 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 		// A subquery that matches no row yields NULL.
 		t := columnExprType(cols[0])
 		t.nullable = true
+		if len(sub.untypedColumns) > 0 {
+			t.untyped = sub.untypedColumns[0].cause
+		}
 		return t, nil
 	default:
 		return a.boolType(false)
@@ -670,6 +684,7 @@ func (a *analyzer) typeOperands(n ast.Node, other exprType) error {
 		if other.typeOID != 0 || other.expr != nil {
 			a.inferParam(pr.Number, other)
 		}
+		a.noteCause(pr, other)
 		return nil
 	}
 	_, err := a.typeExpr(n)
@@ -819,8 +834,13 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	if len(overloads) == 0 {
 		// A dialect's function list is never complete — extensions add to it,
 		// and so does the user. An unknown function leaves the result untyped
-		// rather than failing the query.
-		return exprType{nullable: true}, nil
+		// rather than failing the query, and says so for the dialects that
+		// report an untyped result; so does a placeholder it was passed.
+		unknown := exprType{nullable: true, untyped: fmt.Sprintf("unknown function %q", name)}
+		for _, arg := range args {
+			a.noteCause(arg, unknown)
+		}
+		return unknown, nil
 	}
 	p := a.pickOverload(overloads, argOIDs)
 	// An argument that is a bare placeholder takes the parameter's type,
@@ -845,6 +865,9 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	ret.nullable = p.ReturnNullable
 	if !p.NeverNull && anyNullable && a.cat.PropagatesNullable() {
 		ret.nullable = true
+	}
+	if a.strict != nil && a.isUntyped(ret) {
+		ret.untyped = fmt.Sprintf("the result of %q has no known type here", name)
 	}
 	return ret, nil
 }
@@ -1024,6 +1047,7 @@ func (a *analyzer) typeTypeCast(c *ast.TypeCast) (exprType, error) {
 	// cast is NULL when it was NULL before, or when the type says so.
 	t.nullable = target.Nullable
 	if pr, ok := c.Arg.(*ast.ParamRef); ok {
+		a.markCast(pr)
 		if err := a.typeOperands(pr, t); err != nil {
 			return exprType{}, err
 		}

@@ -167,6 +167,7 @@ func (a *analyzer) bindValue(rel scopeRel, target *core.ClassColumn, v ast.Node)
 	if target != nil {
 		switch value := v.(type) {
 		case *ast.ParamRef:
+			a.locate(value)
 			a.inferParam(value.Number, columnType(rel, *target))
 			return nil
 		case *ast.A_Const:
@@ -203,6 +204,7 @@ func columnType(rel scopeRel, col core.ClassColumn) exprType {
 	return exprType{
 		typeOID:            col.TypeOID,
 		expr:               col.Type,
+		untyped:            rel.causes[col.Name],
 		nullable:           !col.NotNull,
 		sourceClassOID:     rel.classOID,
 		sourceAttributeOID: col.AttOID,

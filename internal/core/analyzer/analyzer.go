@@ -16,6 +16,9 @@ func Prepare(cat *core.Catalog, stmt ast.Node) (core.PrepareResult, error) {
 		params: map[int]core.Parameter{},
 		stars:  &[]core.StarExpansion{},
 	}
+	if cat.Strict() {
+		a.strict = newStrict()
+	}
 	switch s := stmt.(type) {
 	case *ast.SelectStmt:
 		if err := a.analyzeSelect(s); err != nil {
@@ -40,7 +43,11 @@ func Prepare(cat *core.Catalog, stmt ast.Node) (core.PrepareResult, error) {
 	default:
 		return core.PrepareResult{}, fmt.Errorf("analyzer: unsupported statement %T", stmt)
 	}
-	return a.result(), nil
+	res := a.result()
+	if err := a.checkTyped(res); err != nil {
+		return core.PrepareResult{}, err
+	}
+	return res, nil
 }
 
 type analyzer struct {
@@ -69,6 +76,11 @@ type analyzer struct {
 	// with the analyzers of the queries nested in it so one statement reports
 	// all of them.
 	stars *[]core.StarExpansion
+
+	// strict is set for a dialect that fails a query it cannot fully type,
+	// and untypedColumns are this query's result columns that have none.
+	strict         *strict
+	untypedColumns []untypedColumn
 }
 
 func (a *analyzer) recordStar(s core.StarExpansion) {
@@ -88,6 +100,7 @@ func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
 		outer:  a.scope,
 		ctes:   a.ctes,
 		stars:  a.stars,
+		strict: a.strict,
 	}
 	if err := sub.analyzeSelect(s); err != nil {
 		return nil, err
@@ -105,9 +118,9 @@ func (a *analyzer) subqueryColumns(s *ast.SelectStmt) ([]core.Column, error) {
 
 // derivedRel turns a subquery's result columns into a relation, so that the
 // query selecting from it resolves columns the same way as from a table.
-func derivedRel(alias string, cols []core.Column) scopeRel {
-	rel := scopeRel{alias: alias, cols: make([]core.ClassColumn, 0, len(cols))}
-	for _, col := range cols {
+func (a *analyzer) derivedRel(alias string) scopeRel {
+	rel := scopeRel{alias: alias, cols: make([]core.ClassColumn, 0, len(a.columns))}
+	for _, col := range a.columns {
 		rel.cols = append(rel.cols, core.ClassColumn{
 			AttOID:  col.SourceAttributeOID,
 			Name:    col.Name,
@@ -115,6 +128,15 @@ func derivedRel(alias string, cols []core.Column) scopeRel {
 			Type:    col.Type.WithNullable(false),
 			NotNull: col.NotNull,
 		})
+	}
+	for _, col := range a.untypedColumns {
+		if col.cause == "" {
+			continue
+		}
+		if rel.causes == nil {
+			rel.causes = map[string]string{}
+		}
+		rel.causes[col.name] = col.cause
 	}
 	return rel
 }
@@ -269,6 +291,7 @@ func (a *analyzer) typeLimit(n ast.Node) error {
 		if err != nil {
 			return err
 		}
+		a.locate(pr)
 		a.inferParam(pr.Number, exprType{typeOID: oid})
 		return nil
 	}
@@ -296,6 +319,7 @@ func (a *analyzer) analyzeSetOperation(s *ast.SelectStmt) error {
 		return err
 	}
 	a.columns = left.columns
+	a.untypedColumns = left.untypedColumns
 	a.scope = left.scope
 	return nil
 }
@@ -315,11 +339,11 @@ func (a *analyzer) bindCTEs(with *ast.WithClause) error {
 		if !ok {
 			continue
 		}
-		cols, err := a.subqueryColumns(sel)
+		sub, err := a.subquery(sel)
 		if err != nil {
 			return fmt.Errorf("with %s: %w", *cte.Ctename, err)
 		}
-		rel := derivedRel(*cte.Ctename, cols)
+		rel := sub.derivedRel(*cte.Ctename)
 		renameColumns(&rel, cte.Aliascolnames)
 		if a.ctes == nil {
 			a.ctes = map[string]scopeRel{}
@@ -372,6 +396,10 @@ func renameColumns(rel *scopeRel, names *ast.List) {
 			break
 		}
 		if s, ok := item.(*ast.String); ok && s.Str != "" {
+			if cause, ok := rel.causes[rel.cols[i].Name]; ok {
+				delete(rel.causes, rel.cols[i].Name)
+				rel.causes[s.Str] = cause
+			}
 			rel.cols[i].Name = s.Str
 		}
 	}

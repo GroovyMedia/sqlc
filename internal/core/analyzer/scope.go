@@ -17,6 +17,9 @@ type scopeRel struct {
 	// cols is the catalog's column list, held as-is rather than copied into a
 	// scope-local column type.
 	cols []core.ClassColumn
+	// causes says, by column name, why a column of a derived relation has
+	// no type, for a strict dialect's error.
+	causes map[string]string
 }
 
 func (a *analyzer) buildScope(from *ast.List) (*scope, error) {
@@ -140,7 +143,7 @@ func (a *analyzer) bindRangeSubselect(rs *ast.RangeSubselect) (scopeRel, error) 
 	if !ok {
 		return scopeRel{}, fmt.Errorf("subquery: unsupported %T", rs.Subquery)
 	}
-	cols, err := a.subqueryColumns(sel)
+	sub, err := a.subquery(sel)
 	if err != nil {
 		return scopeRel{}, err
 	}
@@ -148,7 +151,7 @@ func (a *analyzer) bindRangeSubselect(rs *ast.RangeSubselect) (scopeRel, error) 
 	if rs.Alias != nil && rs.Alias.Aliasname != nil {
 		alias = *rs.Alias.Aliasname
 	}
-	rel := derivedRel(alias, cols)
+	rel := sub.derivedRel(alias)
 	if rs.Alias != nil {
 		renameColumns(&rel, rs.Alias.Colnames)
 	}

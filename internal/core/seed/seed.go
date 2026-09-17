@@ -84,6 +84,11 @@ type Settings struct {
 	// ClickHouse names the second id of a join e.id.
 	QualifyDuplicateColumns bool `json:"qualify_duplicate_columns,omitempty"`
 
+	// Strict fails a query with a result column or a placeholder the
+	// analysis could not type, rather than reporting it untyped, for a
+	// dialect that gives such a placeholder no type of its own.
+	Strict bool `json:"strict,omitempty"`
+
 	// Comparison operators are registered as (T, T) -> Bool for every type in
 	// ComparisonCategories.
 	Comparison           []string `json:"comparison,omitempty"`
@@ -645,6 +650,11 @@ func (b *builder) consts() error {
 	}
 	if b.settings.QualifyDuplicateColumns {
 		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagQualifyDuplicateColumns, "true"); err != nil {
+			return err
+		}
+	}
+	if b.settings.Strict {
+		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagStrict, "true"); err != nil {
 			return err
 		}
 	}

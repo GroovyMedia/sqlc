@@ -8,6 +8,7 @@
     "bool": "boolean"
   },
   "bool": "boolean",
+  "strict": true,
   "comparison": ["=", "==", "<>", "!=", "<", "<=", ">", ">=", "IS DISTINCT FROM", "IS NOT DISTINCT FROM"],
   "comparison_categories": "BNSDU",
   "arithmetic": ["+", "-", "*", "/", "//", "%", "**", "^"],

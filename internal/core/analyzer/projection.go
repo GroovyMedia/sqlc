@@ -57,6 +57,7 @@ func (a *analyzer) projectTarget(rt *ast.ResTarget) error {
 		}
 		a.qualifyDuplicate(&col, t.sourceTableAlias)
 	}
+	a.recordUntyped(col.Name, t, rt.Location)
 	a.columns = append(a.columns, col)
 	return nil
 }
@@ -152,11 +153,12 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 				SourceClassOID:     rel.classOID,
 				SourceAttributeOID: c.AttOID,
 			}
-			t := exprType{typeOID: c.TypeOID, expr: c.Type, nullable: !c.NotNull}
+			t := exprType{typeOID: c.TypeOID, expr: c.Type, untyped: rel.causes[c.Name], nullable: !c.NotNull}
 			col.DataType, col.IsArray = a.typeNameOf(t)
 			col.Type = a.typeExprOf(t)
 			a.decorateSource(&col, c.AttOID, rel.alias)
 			a.qualifyDuplicate(&col, rel.alias)
+			a.recordUntyped(col.Name, t, rt.Location)
 			a.columns = append(a.columns, col)
 			star.Columns = append(star.Columns, core.StarColumn{
 				Relation: rel.alias,
