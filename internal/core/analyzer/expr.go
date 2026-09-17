@@ -401,6 +401,7 @@ func (a *analyzer) typeIn(e *ast.In) (exprType, error) {
 	// "x IN (SELECT ...)" compares x against the subquery's column, and the
 	// subquery's own placeholders are reported with the rest.
 	if sel, ok := e.Sel.(*ast.SelectStmt); ok {
+		a.inferUnnestParam(sel, leftT)
 		cols, err := a.subqueryColumns(sel)
 		if err != nil {
 			return exprType{}, err
@@ -597,7 +598,8 @@ func (a *analyzer) familyOID(oid int64) int64 {
 // typeSubLink types a subquery used as an expression: EXISTS and IN yield a
 // predicate, and a scalar subquery yields its first column.
 func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
-	if _, err := a.typeExpr(e.Testexpr); err != nil {
+	testT, err := a.typeExpr(e.Testexpr)
+	if err != nil {
 		return exprType{}, err
 	}
 	sel, ok := e.Subselect.(*ast.SelectStmt)
@@ -607,9 +609,19 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 		}
 		return a.boolType(false)
 	}
+	if e.SubLinkType == ast.ANY_SUBLINK || e.SubLinkType == ast.ALL_SUBLINK {
+		a.inferUnnestParam(sel, testT)
+	}
 	cols, err := a.subqueryColumns(sel)
 	if err != nil {
 		return exprType{}, err
+	}
+	// "$1 = ANY(SELECT ...)" compares the placeholder against the
+	// subquery's column, and holds a value of its type.
+	if pr, ok := e.Testexpr.(*ast.ParamRef); ok && len(cols) > 0 {
+		if err := a.typeOperands(pr, exprType{typeOID: cols[0].TypeOID, expr: cols[0].Type.WithNullable(false)}); err != nil {
+			return exprType{}, err
+		}
 	}
 	switch e.SubLinkType {
 	case ast.EXPR_SUBLINK, ast.ARRAY_SUBLINK:
@@ -623,6 +635,38 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 	default:
 		return a.boolType(false)
 	}
+}
+
+// inferUnnestParam types the placeholder of "x = ANY($1)", which DuckDB's
+// parser spells as "x = ANY(SELECT unnest($1))", as a list of x's type,
+// standing in for x's column when x is one. A subquery that is anything but
+// a bare placeholder unnested is left to say what it holds.
+func (a *analyzer) inferUnnestParam(sel *ast.SelectStmt, testT exprType) {
+	if sel.FromClause != nil || sel.WhereClause != nil || len(listItems(sel.TargetList)) != 1 {
+		return
+	}
+	rt, ok := sel.TargetList.Items[0].(*ast.ResTarget)
+	if !ok {
+		return
+	}
+	fc, ok := rt.Val.(*ast.FuncCall)
+	if !ok || funcCallName(fc) != "unnest" || len(listItems(fc.Args)) != 1 {
+		return
+	}
+	pr, ok := fc.Args.Items[0].(*ast.ParamRef)
+	if !ok {
+		return
+	}
+	element := a.exprOf(testT)
+	if element == nil {
+		return
+	}
+	list := a.lookupType(listOf(element, 1))
+	list.nullable = testT.nullable
+	list.sourceClassOID = testT.sourceClassOID
+	list.sourceAttributeOID = testT.sourceAttributeOID
+	list.sourceTableAlias = testT.sourceTableAlias
+	a.inferParam(pr.Number, list)
 }
 
 // typeComparison types IS DISTINCT FROM and its negation, which compare any two
@@ -838,6 +882,9 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		return exprType{}, err
 	}
 	if len(overloads) == 0 {
+		if name == "unnest" {
+			return a.typeUnnest(argTypes), nil
+		}
 		// A dialect's function list is never complete — extensions add to it,
 		// and so does the user. An unknown function leaves the result untyped
 		// rather than failing the query.
@@ -881,6 +928,22 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		ret.nullable = true
 	}
 	return ret, nil
+}
+
+// typeUnnest types unnest in a dialect whose seed cannot describe it —
+// DuckDB lists it as a table function with no return type: the element of
+// its list argument, which may be NULL.
+func (a *analyzer) typeUnnest(argTypes []exprType) exprType {
+	if len(argTypes) == 0 {
+		return exprType{nullable: true}
+	}
+	t := a.exprOf(argTypes[0])
+	if !t.IsArray() {
+		return exprType{nullable: true}
+	}
+	out := a.lookupType(t.Element().WithNullable(false))
+	out.nullable = true
+	return out
 }
 
 // listOf wraps a type in dims list dimensions.
