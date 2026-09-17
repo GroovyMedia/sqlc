@@ -25,6 +25,12 @@ type scopeRel struct {
 	// has no match for holds NULL in every column of this relation, whatever
 	// the column declares.
 	nullable bool
+	// values marks a relation a VALUES list produces, whose column names
+	// are the engine's to give.
+	values bool
+	// causes says, by column name, why a column of a derived relation has
+	// no type, for a strict dialect's error.
+	causes map[string]string
 }
 
 // joinedColumn is a column both sides of a join have under one name and a
@@ -101,6 +107,10 @@ func (a *analyzer) appendFromItem(sc *scope, item ast.Node) error {
 		}
 		sc.rels = append(sc.rels, rel)
 		return nil
+	case *ast.RangeTableSample:
+		// A sample has the relation's columns; how many rows is not a
+		// question of type.
+		return a.appendFromItem(sc, v.Relation)
 	case *ast.List:
 		// Some engines report a comma-separated FROM as a nested list.
 		for _, item := range listItems(v) {
@@ -343,7 +353,7 @@ func (a *analyzer) bindRangeSubselect(rs *ast.RangeSubselect) (scopeRel, error) 
 	if !ok {
 		return scopeRel{}, fmt.Errorf("subquery: unsupported %T", rs.Subquery)
 	}
-	cols, err := a.subqueryColumns(sel)
+	sub, err := a.subquery(sel)
 	if err != nil {
 		return scopeRel{}, err
 	}
@@ -351,7 +361,8 @@ func (a *analyzer) bindRangeSubselect(rs *ast.RangeSubselect) (scopeRel, error) 
 	if rs.Alias != nil && rs.Alias.Aliasname != nil {
 		alias = *rs.Alias.Aliasname
 	}
-	rel := derivedRel(alias, cols)
+	rel := sub.derivedRel(alias)
+	rel.values = len(listItems(sel.ValuesLists)) > 0
 	if rs.Alias != nil {
 		renameColumns(&rel, rs.Alias.Colnames)
 	}

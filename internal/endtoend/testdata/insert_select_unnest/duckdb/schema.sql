@@ -1,10 +1,3 @@
-CREATE TABLE pages (
-  id      BIGINT  NOT NULL,
-  slug    TEXT    NOT NULL,
-  hits    INTEGER,
-  updated TIMESTAMPTZ
-);
-
 CREATE TABLE users (
   id   BIGINT NOT NULL,
   name TEXT   NOT NULL,

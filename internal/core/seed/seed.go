@@ -96,6 +96,11 @@ type Settings struct {
 	// columns of that side are nullable, as the SQL standard has it.
 	OuterJoinDefaults bool `json:"outer_join_defaults,omitempty"`
 
+	// Strict fails a query with a result column or a placeholder the
+	// analysis could not type, rather than reporting it untyped, for a
+	// dialect that gives such a placeholder no type of its own.
+	Strict bool `json:"strict,omitempty"`
+
 	// Comparison operators are registered as (T, T) -> Bool for every type in
 	// ComparisonCategories.
 	Comparison           []string `json:"comparison,omitempty"`
@@ -673,6 +678,11 @@ func (b *builder) consts() error {
 			pairs = append(pairs, strings.ToLower(name)+":"+strings.ToLower(b.settings.ValueFunctions[name]))
 		}
 		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagValueFunctions, strings.Join(pairs, ",")); err != nil {
+			return err
+		}
+	}
+	if b.settings.Strict {
+		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagStrict, "true"); err != nil {
 			return err
 		}
 	}

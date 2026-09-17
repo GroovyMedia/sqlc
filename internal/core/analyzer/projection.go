@@ -57,6 +57,7 @@ func (a *analyzer) projectTarget(rt *ast.ResTarget) error {
 		}
 		a.qualifyDuplicate(&col, t.sourceTableAlias)
 	}
+	a.recordUntyped(col.Name, t, rt.Location)
 	a.columns = append(a.columns, col)
 	return nil
 }
@@ -135,10 +136,14 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 	if rt.Name != nil {
 		star.Alias = *rt.Name
 	}
+	// A star over a VALUES list is left as written: the names its columns
+	// go by are the engine's, and spelling them out could name them wrong.
+	expand := true
 	for i, rel := range a.scope.rels {
 		if relName != "" && rel.alias != relName {
 			continue
 		}
+		expand = expand && !rel.values
 		a.columns = slices.Grow(a.columns, len(rel.cols))
 		star.Columns = slices.Grow(star.Columns, len(rel.cols))
 		for _, c := range rel.cols {
@@ -169,6 +174,7 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 			col.Type = a.typeExprOf(t)
 			a.decorateSource(&col, c.AttOID, rel.alias)
 			a.qualifyDuplicate(&col, rel.alias)
+			a.recordUntyped(col.Name, t, rt.Location)
 			a.columns = append(a.columns, col)
 			star.Columns = append(star.Columns, core.StarColumn{
 				Relation: rel.alias,
@@ -177,5 +183,7 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 			})
 		}
 	}
-	a.recordStar(star)
+	if expand {
+		a.recordStar(star)
+	}
 }

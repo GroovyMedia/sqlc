@@ -1,6 +1,7 @@
 package duckdb
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -23,7 +24,11 @@ type Parser struct{}
 // starts where the previous one ended — so a statement's span covers the
 // comments before it, which is where the sqlc query annotation lives.
 func (p *Parser) Parse(r io.Reader) ([]ast.Statement, error) {
-	stmts, err := parser.Parse(context.Background(), r)
+	src, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	stmts, err := parser.Parse(context.Background(), bytes.NewReader(src))
 	if err != nil {
 		var perr *parser.Error
 		if errors.As(err, &perr) {
@@ -42,7 +47,7 @@ func (p *Parser) Parse(r io.Reader) ([]ast.Statement, error) {
 
 	var out []ast.Statement
 	for _, stmt := range stmts {
-		converter := &cc{}
+		converter := &cc{src: string(src)}
 		node := converter.convert(stmt)
 		if _, ok := node.(*ast.TODO); ok {
 			continue

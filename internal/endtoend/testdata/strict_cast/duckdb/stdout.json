@@ -1,0 +1,158 @@
+[
+  {
+    "name": "UnsupportedExpression",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "second",
+        "type": {
+          "name": "varchar"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "users"
+        }
+      }
+    ]
+  },
+  {
+    "name": "UnknownFunction",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "f",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "UnknownFunctionParam",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "frobnicate",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "BareParam",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "p",
+        "type": {
+          "name": "integer"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "NullColumn",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "n",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ParamUsedTwice",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ParamUsedTwiceAlike",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  }
+]

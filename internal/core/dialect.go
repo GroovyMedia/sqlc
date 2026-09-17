@@ -76,6 +76,13 @@ const FlagPropagateNullable = "functions.propagate_nullable"
 // calls, as name:function pairs separated by commas.
 const FlagValueFunctions = "functions.values"
 
+// FlagStrict is set for a dialect whose analysis reports what it cannot
+// type rather than leaving it untyped: a result column or a placeholder
+// with no type, and a placeholder two uses type differently, fail the
+// query. DuckDB gives an unconstrained placeholder no type at all, so a
+// query it prepares has every type settled.
+const FlagStrict = "analysis.strict"
+
 // FlagQualifyDuplicateColumns is set for a dialect that names a result
 // column after its relation when an earlier result column from another
 // relation has the same name, as ClickHouse names the second id of a join
@@ -193,6 +200,16 @@ func (c *Catalog) PropagatesNullable() bool {
 		return false
 	}
 	v, _ := c.DialectFlag(c.dialectOID, FlagPropagateNullable)
+	return v == "true"
+}
+
+// Strict reports whether the dialect fails a query whose result column or
+// placeholder has no type.
+func (c *Catalog) Strict() bool {
+	if c.dialectOID == 0 {
+		return false
+	}
+	v, _ := c.DialectFlag(c.dialectOID, FlagStrict)
 	return v == "true"
 }
 

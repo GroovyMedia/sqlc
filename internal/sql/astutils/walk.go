@@ -1866,6 +1866,9 @@ func Walk(f Visitor, node ast.Node) {
 		if n.HavingClause != nil {
 			Walk(f, n.HavingClause)
 		}
+		if n.QualifyClause != nil {
+			Walk(f, n.QualifyClause)
+		}
 		if n.WindowClause != nil {
 			Walk(f, n.WindowClause)
 		}
