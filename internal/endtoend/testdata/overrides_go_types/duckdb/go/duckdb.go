@@ -16,9 +16,10 @@ import (
 
 // The helpers below sit between the generated code and
 // github.com/duckdb/duckdb-go/v2. The driver hands database/sql a LIST as
-// []any, a JSON column decoded and a DECIMAL as its own Decimal value, so
-// those scan through a wrapper; and it binds a JSON message, a big
-// integer and a nil slice only in a form of its own, so those are
+// []any, a JSON column decoded, a DECIMAL as its own Decimal value and a
+// UUID as 16 raw bytes, so those scan through a wrapper; and it binds a
+// list, a JSON message, a big integer, a nil slice and a nullable
+// INTERVAL, STRUCT or MAP only in a form of its own, so those are
 // converted on the way in.
 //
 // A JSON column is not byte-stable through this driver: it decodes the
