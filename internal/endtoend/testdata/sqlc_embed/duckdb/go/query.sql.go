@@ -7,6 +7,7 @@ package querytest
 
 import (
 	"context"
+	"database/sql"
 )
 
 const duplicate = `-- name: Duplicate :one
@@ -76,9 +77,9 @@ RETURNING users.id, users.name, users.age;
 `
 
 type ReturningParams struct {
-	ID   any
-	Name any
-	Age  any
+	ID   int32
+	Name string
+	Age  sql.NullInt32
 }
 
 type ReturningRow struct {
@@ -113,9 +114,9 @@ SELECT users.id, users.name, users.age, id, name, age FROM users;
 
 type WithAsteriskRow struct {
 	User User
-	ID   any
-	Name any
-	Age  any
+	ID   int32
+	Name string
+	Age  sql.NullInt32
 }
 
 func (q *Queries) WithAsterisk(ctx context.Context) (WithAsteriskRow, error) {
@@ -179,10 +180,10 @@ WHERE u.name = $1;
 
 type WithParamRow struct {
 	Post Post
-	Name any
+	Name string
 }
 
-func (q *Queries) WithParam(ctx context.Context, name any) ([]WithParamRow, error) {
+func (q *Queries) WithParam(ctx context.Context, name string) ([]WithParamRow, error) {
 	rows, err := q.db.QueryContext(ctx, withParam, name)
 	if err != nil {
 		return nil, err
@@ -226,7 +227,7 @@ SELECT users.id, users.name, users.age, (SELECT count(*) FROM users) AS total_co
 
 type WithSubqueryRow struct {
 	User       User
-	TotalCount any
+	TotalCount sql.NullInt64
 }
 
 func (q *Queries) WithSubquery(ctx context.Context) ([]WithSubqueryRow, error) {

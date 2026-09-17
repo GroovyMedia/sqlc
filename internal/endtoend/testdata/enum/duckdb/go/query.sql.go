@@ -14,8 +14,8 @@ INSERT INTO people (id, name, current_mood) VALUES ($1, $2, 'happy');
 `
 
 type CreateHappyPersonParams struct {
-	ID   any
-	Name any
+	ID   int32
+	Name string
 }
 
 func (q *Queries) CreateHappyPerson(ctx context.Context, arg CreateHappyPersonParams) error {
@@ -29,11 +29,11 @@ VALUES ($1, $2, $3, $4, $5);
 `
 
 type CreatePersonParams struct {
-	ID          any
-	Name        any
-	CurrentMood any
-	LastMood    any
-	Lvl         any
+	ID          int32
+	Name        string
+	CurrentMood Mood
+	LastMood    NullMood
+	Lvl         NullHrLevel
 }
 
 func (q *Queries) CreatePerson(ctx context.Context, arg CreatePersonParams) error {
@@ -51,7 +51,7 @@ const getPerson = `-- name: GetPerson :one
 SELECT id, name, current_mood, last_mood, lvl FROM people WHERE id = $1;
 `
 
-func (q *Queries) GetPerson(ctx context.Context, id any) (Person, error) {
+func (q *Queries) GetPerson(ctx context.Context, id int32) (Person, error) {
 	row := q.db.QueryRowContext(ctx, getPerson, id)
 	var i Person
 	err := row.Scan(
@@ -69,11 +69,11 @@ SELECT id, name FROM people WHERE lvl = $1;
 `
 
 type ListByLevelRow struct {
-	ID   any
-	Name any
+	ID   int32
+	Name string
 }
 
-func (q *Queries) ListByLevel(ctx context.Context, lvl any) ([]ListByLevelRow, error) {
+func (q *Queries) ListByLevel(ctx context.Context, lvl NullHrLevel) ([]ListByLevelRow, error) {
 	rows, err := q.db.QueryContext(ctx, listByLevel, lvl)
 	if err != nil {
 		return nil, err
@@ -101,12 +101,12 @@ SELECT id, name, current_mood FROM people WHERE current_mood = $1;
 `
 
 type ListByMoodRow struct {
-	ID          any
-	Name        any
-	CurrentMood any
+	ID          int32
+	Name        string
+	CurrentMood Mood
 }
 
-func (q *Queries) ListByMood(ctx context.Context, currentMood any) ([]ListByMoodRow, error) {
+func (q *Queries) ListByMood(ctx context.Context, currentMood Mood) ([]ListByMoodRow, error) {
 	rows, err := q.db.QueryContext(ctx, listByMood, currentMood)
 	if err != nil {
 		return nil, err
@@ -134,8 +134,8 @@ SELECT id, name FROM people WHERE current_mood = 'happy';
 `
 
 type ListHappyRow struct {
-	ID   any
-	Name any
+	ID   int32
+	Name string
 }
 
 func (q *Queries) ListHappy(ctx context.Context) ([]ListHappyRow, error) {
@@ -166,8 +166,8 @@ UPDATE people SET last_mood = $2 WHERE id = $1;
 `
 
 type SetLastMoodParams struct {
-	ID       any
-	LastMood any
+	ID       int32
+	LastMood NullMood
 }
 
 func (q *Queries) SetLastMood(ctx context.Context, arg SetLastMoodParams) error {

@@ -122,7 +122,7 @@
       {
         "name": "k",
         "type": {
-          "name": "varchar",
+          "name": "json",
           "nullable": true
         }
       },

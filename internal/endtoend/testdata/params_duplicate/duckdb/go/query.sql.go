@@ -7,6 +7,7 @@ package querytest
 
 import (
 	"context"
+	"database/sql"
 )
 
 const selectUserByDollarName = `-- name: SelectUserByDollarName :many
@@ -16,15 +17,15 @@ WHERE first_name = $1
    OR last_name = $1;
 `
 
-func (q *Queries) SelectUserByDollarName(ctx context.Context, name any) ([]any, error) {
+func (q *Queries) SelectUserByDollarName(ctx context.Context, name sql.NullString) ([]sql.NullString, error) {
 	rows, err := q.db.QueryContext(ctx, selectUserByDollarName, name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []sql.NullString
 	for rows.Next() {
-		var first_name any
+		var first_name sql.NullString
 		if err := rows.Scan(&first_name); err != nil {
 			return nil, err
 		}
@@ -44,15 +45,15 @@ SELECT first_name from
 users where ($1 = id OR $1 = 0);
 `
 
-func (q *Queries) SelectUserByID(ctx context.Context, id any) ([]any, error) {
+func (q *Queries) SelectUserByID(ctx context.Context, id int32) ([]sql.NullString, error) {
 	rows, err := q.db.QueryContext(ctx, selectUserByID, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []sql.NullString
 	for rows.Next() {
-		var first_name any
+		var first_name sql.NullString
 		if err := rows.Scan(&first_name); err != nil {
 			return nil, err
 		}
@@ -74,15 +75,15 @@ WHERE first_name = $1
    OR last_name = $1;
 `
 
-func (q *Queries) SelectUserByName(ctx context.Context, name any) ([]any, error) {
+func (q *Queries) SelectUserByName(ctx context.Context, name sql.NullString) ([]sql.NullString, error) {
 	rows, err := q.db.QueryContext(ctx, selectUserByName, name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []sql.NullString
 	for rows.Next() {
-		var first_name any
+		var first_name sql.NullString
 		if err := rows.Scan(&first_name); err != nil {
 			return nil, err
 		}
@@ -103,20 +104,20 @@ users where ($1 = id OR $3 = first_name OR $2 = 0);
 `
 
 type SelectUserMixedParams struct {
-	ID      any
-	Column2 any
-	Name    any
+	ID      int32
+	Column2 int32
+	Name    sql.NullString
 }
 
-func (q *Queries) SelectUserMixed(ctx context.Context, arg SelectUserMixedParams) ([]any, error) {
+func (q *Queries) SelectUserMixed(ctx context.Context, arg SelectUserMixedParams) ([]sql.NullString, error) {
 	rows, err := q.db.QueryContext(ctx, selectUserMixed, arg.ID, arg.Column2, arg.Name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []sql.NullString
 	for rows.Next() {
-		var first_name any
+		var first_name sql.NullString
 		if err := rows.Scan(&first_name); err != nil {
 			return nil, err
 		}
@@ -136,15 +137,15 @@ SELECT first_name from
 users where ($1 = id OR  $1 = 0);
 `
 
-func (q *Queries) SelectUserQuestion(ctx context.Context, id any) ([]any, error) {
+func (q *Queries) SelectUserQuestion(ctx context.Context, id int32) ([]sql.NullString, error) {
 	rows, err := q.db.QueryContext(ctx, selectUserQuestion, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []sql.NullString
 	for rows.Next() {
-		var first_name any
+		var first_name sql.NullString
 		if err := rows.Scan(&first_name); err != nil {
 			return nil, err
 		}

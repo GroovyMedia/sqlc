@@ -456,7 +456,7 @@ type SumThingsRow struct {
 	Total *big.Int
 	N     int64
 	MaxD  sql.NullString
-	Names []any
+	Names []string
 }
 
 func (q *Queries) SumThings(ctx context.Context) (SumThingsRow, error) {

@@ -13,15 +13,15 @@ const funcParamIdent = `-- name: FuncParamIdent :many
 SELECT name FROM foo WHERE name = $1;
 `
 
-func (q *Queries) FuncParamIdent(ctx context.Context, slug any) ([]any, error) {
+func (q *Queries) FuncParamIdent(ctx context.Context, slug string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, funcParamIdent, slug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
@@ -40,15 +40,15 @@ const funcParamString = `-- name: FuncParamString :many
 SELECT name FROM foo WHERE name = $1;
 `
 
-func (q *Queries) FuncParamString(ctx context.Context, slug any) ([]any, error) {
+func (q *Queries) FuncParamString(ctx context.Context, slug string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, funcParamString, slug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}

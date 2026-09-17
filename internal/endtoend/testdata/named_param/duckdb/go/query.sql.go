@@ -13,15 +13,15 @@ const atParams = `-- name: AtParams :many
 SELECT name FROM foo WHERE name = $1;
 `
 
-func (q *Queries) AtParams(ctx context.Context, slug any) ([]any, error) {
+func (q *Queries) AtParams(ctx context.Context, slug string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, atParams, slug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
@@ -40,15 +40,15 @@ const dollarParams = `-- name: DollarParams :many
 SELECT name FROM foo WHERE name = $1;
 `
 
-func (q *Queries) DollarParams(ctx context.Context, slug any) ([]any, error) {
+func (q *Queries) DollarParams(ctx context.Context, slug string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, dollarParams, slug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
@@ -67,15 +67,15 @@ const funcParams = `-- name: FuncParams :many
 SELECT name FROM foo WHERE name = $1;
 `
 
-func (q *Queries) FuncParams(ctx context.Context, slug any) ([]any, error) {
+func (q *Queries) FuncParams(ctx context.Context, slug string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, funcParams, slug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
@@ -95,13 +95,13 @@ INSERT INTO foo(name, bio) values ($1, $2) returning name;
 `
 
 type InsertAtParamsParams struct {
-	Name any
-	Bio  any
+	Name string
+	Bio  string
 }
 
-func (q *Queries) InsertAtParams(ctx context.Context, arg InsertAtParamsParams) (any, error) {
+func (q *Queries) InsertAtParams(ctx context.Context, arg InsertAtParamsParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, insertAtParams, arg.Name, arg.Bio)
-	var name any
+	var name string
 	err := row.Scan(&name)
 	return name, err
 }
@@ -111,13 +111,13 @@ INSERT INTO foo(name, bio) values ($1, $2) returning name;
 `
 
 type InsertDollarParamsParams struct {
-	Name any
-	Bio  any
+	Name string
+	Bio  string
 }
 
-func (q *Queries) InsertDollarParams(ctx context.Context, arg InsertDollarParamsParams) (any, error) {
+func (q *Queries) InsertDollarParams(ctx context.Context, arg InsertDollarParamsParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, insertDollarParams, arg.Name, arg.Bio)
-	var name any
+	var name string
 	err := row.Scan(&name)
 	return name, err
 }
@@ -127,13 +127,13 @@ INSERT INTO foo(name, bio) values ($1, $2) returning name;
 `
 
 type InsertFuncParamsParams struct {
-	Name any
-	Bio  any
+	Name string
+	Bio  string
 }
 
-func (q *Queries) InsertFuncParams(ctx context.Context, arg InsertFuncParamsParams) (any, error) {
+func (q *Queries) InsertFuncParams(ctx context.Context, arg InsertFuncParamsParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, insertFuncParams, arg.Name, arg.Bio)
-	var name any
+	var name string
 	err := row.Scan(&name)
 	return name, err
 }
@@ -143,19 +143,19 @@ SELECT name FROM foo ORDER BY name LIMIT $1 OFFSET $2;
 `
 
 type PagingParams struct {
-	PageSize   any
-	PageOffset any
+	PageSize   int32
+	PageOffset int32
 }
 
-func (q *Queries) Paging(ctx context.Context, arg PagingParams) ([]any, error) {
+func (q *Queries) Paging(ctx context.Context, arg PagingParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, paging, arg.PageSize, arg.PageOffset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []any
+	var items []string
 	for rows.Next() {
-		var name any
+		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}

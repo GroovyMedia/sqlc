@@ -5,5 +5,5 @@
 package querytest
 
 type Foo struct {
-	Name any
+	Name string
 }

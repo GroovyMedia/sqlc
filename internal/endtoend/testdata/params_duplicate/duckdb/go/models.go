@@ -4,8 +4,12 @@
 
 package querytest
 
+import (
+	"database/sql"
+)
+
 type User struct {
-	ID        any
-	FirstName any
-	LastName  any
+	ID        int32
+	FirstName sql.NullString
+	LastName  sql.NullString
 }

@@ -5,6 +5,6 @@
 package querytest
 
 type Foo struct {
-	Name any
-	Bio  any
+	Name string
+	Bio  string
 }

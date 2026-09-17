@@ -4,18 +4,22 @@
 
 package querytest
 
+import (
+	"database/sql"
+)
+
 type BazUser struct {
-	ID   any
-	Name any
+	ID   int32
+	Name string
 }
 
 type Post struct {
-	ID     any
-	UserID any
+	ID     int32
+	UserID int32
 }
 
 type User struct {
-	ID   any
-	Name any
-	Age  any
+	ID   int32
+	Name string
+	Age  sql.NullInt32
 }

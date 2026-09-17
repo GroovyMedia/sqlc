@@ -95,9 +95,9 @@ func (ns NullMood) Value() (driver.Value, error) {
 }
 
 type Person struct {
-	ID          any
-	Name        any
-	CurrentMood any
-	LastMood    any
-	Lvl         any
+	ID          int32
+	Name        string
+	CurrentMood Mood
+	LastMood    NullMood
+	Lvl         NullHrLevel
 }

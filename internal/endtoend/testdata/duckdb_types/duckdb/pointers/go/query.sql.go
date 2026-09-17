@@ -455,7 +455,7 @@ type SumThingsRow struct {
 	Total *big.Int `json:"total"`
 	N     int64    `json:"n"`
 	MaxD  *string  `json:"max_d"`
-	Names []any    `json:"names"`
+	Names []string `json:"names"`
 }
 
 func (q *Queries) SumThings(ctx context.Context) (SumThingsRow, error) {
