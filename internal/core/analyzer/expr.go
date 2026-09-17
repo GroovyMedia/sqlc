@@ -169,6 +169,12 @@ func (a *analyzer) typeColumnRef(c *ast.ColumnRef) (exprType, error) {
 			return exprType{}, err
 		}
 	}
+	// Or reach into a struct column: point.a is field a of column point.
+	if !ok && relation != "" {
+		if t, ok, err := a.typeStructField(parts); err != nil || ok {
+			return t, err
+		}
+	}
 	if !ok {
 		if relation != "" {
 			return exprType{}, fmt.Errorf("unknown column %q.%q", relation, column)
@@ -180,7 +186,54 @@ func (a *analyzer) typeColumnRef(c *ast.ColumnRef) (exprType, error) {
 		}
 		return exprType{}, fmt.Errorf("unknown column %q", column)
 	}
+	if len(parts) > 2 {
+		// What follows a qualified column, as in t.point.a, names fields
+		// of its struct.
+		if t, ok := a.typeFieldPath(columnType(rel, col), parts[2:]); ok {
+			return t, nil
+		}
+		return exprType{}, fmt.Errorf("unknown column %q", strings.Join(parts, "."))
+	}
 	return columnType(rel, col), nil
+}
+
+// typeStructField types a dotted name whose head is a column of a struct
+// type and whose tail names a field of it, at any depth.
+func (a *analyzer) typeStructField(parts []string) (exprType, bool, error) {
+	rel, col, ok, err := a.resolveColumn("", parts[0])
+	if err != nil || !ok {
+		return exprType{}, false, err
+	}
+	t, ok := a.typeFieldPath(columnType(rel, col), parts[1:])
+	return t, ok, nil
+}
+
+// typeFieldPath types the field a path of names reaches in a struct. The
+// field may be NULL whatever the struct is.
+func (a *analyzer) typeFieldPath(t exprType, fields []string) (exprType, bool) {
+	e := a.exprOf(t)
+	for _, field := range fields {
+		if e = structField(e, field); e == nil {
+			return exprType{}, false
+		}
+	}
+	out := a.lookupType(e)
+	out.nullable = true
+	return out, true
+}
+
+// structField is the type of a struct's named field, or nil when the type
+// is not a struct that names it.
+func structField(t *core.TypeExpr, name string) *core.TypeExpr {
+	if t == nil {
+		return nil
+	}
+	for _, arg := range t.Args {
+		if arg.Type != nil && arg.Label != "" && strings.EqualFold(arg.Label, name) {
+			return arg.Type
+		}
+	}
+	return nil
 }
 
 func flattenFields(fields *ast.List) []string {
@@ -942,6 +995,14 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	if computed := a.returnTemplate(p, args, argTypes); computed != nil {
 		ret = a.lookupType(computed)
 	}
+	// A field read from a struct by name — struct_extract(s, 'a'), which is
+	// also how DuckDB binds s['a'] — has the field's type when the struct's
+	// type names it, and may be NULL whatever the struct is.
+	if (name == "struct_extract" || name == "array_extract") && len(args) == 2 {
+		if t, ok := a.typeFieldPath(argTypes[0], []string{stringConst(args[1])}); ok {
+			return t, nil
+		}
+	}
 	ret.nullable = p.ReturnNullable
 	if !p.NeverNull && anyNullable && a.cat.PropagatesNullable() {
 		ret.nullable = true
@@ -999,6 +1060,16 @@ func (a *analyzer) typeUnnest(argTypes []exprType) exprType {
 	out := a.lookupType(t.Element().WithNullable(false))
 	out.nullable = true
 	return out
+}
+
+// stringConst is the value of a string literal, or "" for anything else.
+func stringConst(n ast.Node) string {
+	if c, ok := n.(*ast.A_Const); ok {
+		if s, ok := c.Val.(*ast.String); ok {
+			return s.Str
+		}
+	}
+	return ""
 }
 
 // listOf wraps a type in dims list dimensions.
