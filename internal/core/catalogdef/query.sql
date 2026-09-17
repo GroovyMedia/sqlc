@@ -111,6 +111,14 @@ SELECT oid, namespace_oid, name, expr, category, typtype, preferred,
 FROM sql_type
 WHERE oid = ?;
 
+-- name: ListEnumsInNamespace :many
+-- The enums a schema declared in a namespace, in declaration order. An
+-- enum is a family whose arguments are its labels, so the instance rows
+-- built on one (an array of it) are not listed.
+SELECT oid, name FROM sql_type
+WHERE namespace_oid = ? AND typtype = 'e' AND family_oid IS NULL
+ORDER BY oid;
+
 -- name: CreateTypeRewrite :exec
 INSERT INTO sql_type_rewrite (dialect_oid, ord, pattern, template, cond)
 VALUES (?, ?, ?, ?, ?);
