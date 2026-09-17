@@ -15,7 +15,10 @@ import (
 // dialect that is not strict.
 type strict struct {
 	paramLocation map[int]int
-	paramCause    map[int]string
+	// paramName is the name the query gave a placeholder, when its syntax
+	// has one, for the error that names it.
+	paramName  map[int]string
+	paramCause map[int]string
 	// cast holds the placeholders a cast typed, which no other use can
 	// contradict: the cast is the query's own word on the type.
 	cast     map[int]bool
@@ -35,6 +38,7 @@ type untypedColumn struct {
 func newStrict() *strict {
 	return &strict{
 		paramLocation: map[int]int{},
+		paramName:     map[int]string{},
 		paramCause:    map[int]string{},
 		cast:          map[int]bool{},
 	}
@@ -47,15 +51,25 @@ func (a *analyzer) markCast(p *ast.ParamRef) {
 	}
 }
 
-// locate records where a placeholder first stands, for the error that
-// names it.
+// locate records where a placeholder first stands, and what the query
+// calls it, for the error that names it.
 func (a *analyzer) locate(p *ast.ParamRef) {
 	if a.strict == nil {
 		return
 	}
 	if _, ok := a.strict.paramLocation[p.Number]; !ok {
 		a.strict.paramLocation[p.Number] = p.Location
+		a.strict.paramName[p.Number] = p.Name
 	}
+}
+
+// spellParam is how an error names a placeholder: as @name when the query
+// named it, else as $N.
+func (s *strict) spellParam(number int) string {
+	if name := s.paramName[number]; name != "" {
+		return "@" + name
+	}
+	return fmt.Sprintf("$%d", number)
 }
 
 // noteCause records why a placeholder compared with an untyped expression
@@ -88,9 +102,10 @@ func (a *analyzer) noteConflict(number int, cur core.Parameter, t exprType) {
 	if a.isUntyped(was) || a.isUntyped(t) || a.sameFamily(was, t) {
 		return
 	}
+	ref := a.strict.spellParam(number)
 	a.strict.conflict = &sqlerr.Error{
-		Message: fmt.Sprintf("parameter $%d is used as %s and as %s; cast it to one type, as in $%d::BIGINT",
-			number, a.spell(was), a.spell(t), number),
+		Message: fmt.Sprintf("parameter %s is used as %s and as %s; cast it to one type, as in %s::BIGINT",
+			ref, a.spell(was), a.spell(t), ref),
 		Location: a.strict.paramLocation[number],
 	}
 }
@@ -153,8 +168,9 @@ func (a *analyzer) checkTyped(res core.PrepareResult) error {
 		if cause == "" {
 			cause = "nothing in the query says what it holds"
 		}
+		ref := a.strict.spellParam(p.Number)
 		return &sqlerr.Error{
-			Message:  fmt.Sprintf("parameter $%d has no type: %s; cast it to the type it holds, as in $%d::BIGINT", p.Number, cause, p.Number),
+			Message:  fmt.Sprintf("parameter %s has no type: %s; cast it to the type it holds, as in %s::BIGINT", ref, cause, ref),
 			Location: a.strict.paramLocation[p.Number],
 		}
 	}

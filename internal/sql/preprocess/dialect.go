@@ -59,7 +59,7 @@ type Dialect struct {
 
 	// FoldIdentifier reports whether the dialect lowercases unquoted
 	// identifiers. It decides the case of a parameter named by a bare
-	// reference, e.g. sqlc.arg(FooBar).
+	// reference: sqlc.arg(FooBar), @FooBar and $FooBar.
 	FoldIdentifier bool
 
 	// DollarName reports whether $name is a named bind parameter. It is

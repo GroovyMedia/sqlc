@@ -1,0 +1,30 @@
+[
+  {
+    "start": 0,
+    "end": 62,
+    "dollar": true,
+    "params": [
+      {
+        "number": 1,
+        "location": 34,
+        "origin": 34,
+        "name": "foobar",
+        "named": true
+      },
+      {
+        "number": 1,
+        "location": 46,
+        "origin": 51,
+        "name": "foobar",
+        "named": true
+      },
+      {
+        "number": 1,
+        "location": 59,
+        "origin": 78,
+        "name": "foobar",
+        "named": true
+      }
+    ]
+  }
+]

@@ -85,8 +85,9 @@ func (c *Compiler) parseCatalogLegacy(files []schemaFile, merr *multierr.Error) 
 			// A schema file and a query file are often the same file, so a
 			// query's sqlc syntax can fail here. Look for an explanation
 			// before reporting the syntax error it caused.
-			if reported := addSyntaxErrors(merr, file.name, file.contents, preprocess.File(c.conf.Engine, file.contents)); !reported {
-				merr.Add(file.name, file.contents, 0, err)
+			pp := preprocess.File(c.conf.Engine, file.contents)
+			if reported := addSyntaxErrors(merr, file.name, file.contents, pp); !reported {
+				merr.Add(file.name, file.contents, locateParseError(c.parser, pp, err), err)
 			}
 			continue
 		}
@@ -117,8 +118,9 @@ func (c *Compiler) parseCatalogCore(files []schemaFile, merr *multierr.Error) er
 				// A schema file and a query file are often the same file, so a
 				// query's sqlc syntax can fail here. Look for an explanation
 				// before reporting the syntax error it caused.
-				if reported := addSyntaxErrors(merr, file.name, file.contents, preprocess.File(c.conf.Engine, file.contents)); !reported {
-					merr.Add(file.name, file.contents, 0, err)
+				pp := preprocess.File(c.conf.Engine, file.contents)
+				if reported := addSyntaxErrors(merr, file.name, file.contents, pp); !reported {
+					merr.Add(file.name, file.contents, locateParseError(c.parser, pp, err), err)
 				}
 				continue
 			}
@@ -184,7 +186,7 @@ func (c *Compiler) parseQueries(o opts.Parser) (*Result, error) {
 		parsed, err := c.parser.Parse(strings.NewReader(pp.Text))
 		if err != nil {
 			if reported := addSyntaxErrors(merr, filename, src, pp); !reported {
-				merr.Add(filename, src, 0, err)
+				merr.Add(filename, src, locateParseError(c.parser, pp, err), err)
 			}
 			continue
 		}
@@ -297,4 +299,26 @@ func addSyntaxErrors(merr *multierr.Error, filename, src string, pp *preprocess.
 		merr.Add(filename, src, loc, stmt.Err)
 	}
 	return found
+}
+
+// locateParseError finds the statement a parse error with no position
+// belongs to, by parsing each statement on its own, and returns where that
+// statement starts in the source. A parser that rejects a statement after
+// parsing it, for a duplicate CTE name or an unsupported clause, does not
+// always say where; without this the error points at line 1 of a file of
+// many queries. It returns 0 when the error has a position of its own or no
+// statement fails alone.
+func locateParseError(p Parser, pp *preprocess.Result, err error) int {
+	var e *sqlerr.Error
+	if errors.As(err, &e) && e.Location != 0 {
+		return 0
+	}
+	for _, stmt := range pp.Statements() {
+		text := pp.Text[stmt.Start:stmt.End]
+		if _, perr := p.Parse(strings.NewReader(text)); perr != nil {
+			lead := len(text) - len(strings.TrimLeft(text, " \t\r\n"))
+			return pp.Origin(stmt.Start + lead)
+		}
+	}
+	return 0
 }
