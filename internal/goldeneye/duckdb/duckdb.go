@@ -232,7 +232,11 @@ func isOperatorName(name string) bool {
 // argument is: DuckDB binds them with special NULL handling rather than
 // the default, which returns NULL for any NULL argument. The
 // concatenation of lists takes a NULL list as an empty one, and so do
-// the macros that append to a list through it.
+// the macros that append to a list through it. greatest and least, NULL
+// only when every argument is, and concat_ws, NULL only when its
+// separator is, are not listed: the seed cannot say which argument
+// counts, and a result that propagates from any argument is the safe
+// side.
 var neverNull = map[string]bool{
 	"array_append":     true,
 	"array_cat":        true,
@@ -241,11 +245,8 @@ var neverNull = map[string]bool{
 	"array_push_back":  true,
 	"array_push_front": true,
 	"concat":           true,
-	"concat_ws":        true,
-	"greatest":         true,
 	"hash":             true,
 	"json_object":      true,
-	"least":            true,
 	"list_append":      true,
 	"list_cat":         true,
 	"list_concat":      true,

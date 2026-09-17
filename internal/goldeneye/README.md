@@ -69,9 +69,10 @@ the hand-written files alone, and the checks do not look at them.
   `duckdb_functions()`. Three things the catalog does not say are written
   into the generator: a function's result is NULL when an argument is,
   except for `count` and the functions DuckDB binds with special NULL
-  handling — `greatest` and `least`, `concat`, `hash`, the constructors
-  and concatenation of lists, structs and rows — which `functions.jsonl`
-  marks as never null; a `LAMBDA` parameter, which no value has the type
+  handling — `concat`, `hash`, the constructors and concatenation of
+  lists, structs and rows — which `functions.jsonl` marks as never null
+  (`greatest`, `least` and `concat_ws` are NULL for some NULL arguments
+  and not others, which the seed cannot say, so they propagate); a `LAMBDA` parameter, which no value has the type
   of, is seeded as a type of its own, so that `list_transform` and its
   relatives are listed; and the parameter types of the built-in macros
   — `array_append`, `split_part`, `date_add` and the rest — which the

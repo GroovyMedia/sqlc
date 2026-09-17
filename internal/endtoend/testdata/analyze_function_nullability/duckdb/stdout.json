@@ -1,0 +1,37 @@
+[
+  {
+    "name": "GreatestLeast",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "g",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "l",
+        "type": {
+          "name": "date",
+          "nullable": true
+        }
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  }
+]

@@ -1219,7 +1219,7 @@
 {"name":"combine_aggr","kind":"a","args":[{"type":"any"},{"type":"bigint"}],"returns":"any","nullable":true}
 {"name":"combine_aggr","kind":"a","args":[{"type":"any"}],"returns":"any","nullable":true}
 {"name":"concat","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"any","never_null":true}
-{"name":"concat_ws","args":[{"type":"varchar"},{"type":"any"},{"type":"any","mode":"v"}],"returns":"varchar","never_null":true}
+{"name":"concat_ws","args":[{"type":"varchar"},{"type":"any"},{"type":"any","mode":"v"}],"returns":"varchar"}
 {"name":"constant_or_null","args":[{"type":"any"},{"type":"any"},{"type":"any","mode":"v"}],"returns":"any"}
 {"name":"contains","args":[{"type":"map"},{"type":"any"}],"returns":"boolean"}
 {"name":"contains","args":[{"type":"any[]"},{"type":"any"}],"returns":"boolean"}
@@ -1458,7 +1458,7 @@
 {"name":"grade_up","args":[{"type":"any[]"},{"type":"varchar"},{"type":"varchar"}],"returns":"any[]"}
 {"name":"grade_up","args":[{"type":"any[]"},{"type":"varchar"}],"returns":"any[]"}
 {"name":"grade_up","args":[{"type":"any[]"}],"returns":"any[]"}
-{"name":"greatest","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"any","never_null":true}
+{"name":"greatest","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"any"}
 {"name":"greatest_common_divisor","args":[{"type":"bigint"},{"type":"bigint"}],"returns":"bigint"}
 {"name":"greatest_common_divisor","args":[{"type":"hugeint"},{"type":"hugeint"}],"returns":"hugeint"}
 {"name":"group_concat","kind":"a","args":[{"type":"any"},{"type":"varchar"}],"returns":"varchar","nullable":true}
@@ -1758,7 +1758,7 @@
 {"name":"lcm","args":[{"type":"bigint"},{"type":"bigint"}],"returns":"bigint"}
 {"name":"lcm","args":[{"type":"hugeint"},{"type":"hugeint"}],"returns":"hugeint"}
 {"name":"lead","kind":"w","args":[{"type":"any"},{"type":"bigint"},{"type":"any"}],"returns":"any","nullable":true}
-{"name":"least","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"any","never_null":true}
+{"name":"least","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"any"}
 {"name":"least_common_multiple","args":[{"type":"bigint"},{"type":"bigint"}],"returns":"bigint"}
 {"name":"least_common_multiple","args":[{"type":"hugeint"},{"type":"hugeint"}],"returns":"hugeint"}
 {"name":"left","args":[{"type":"varchar"},{"type":"bigint"}],"returns":"varchar"}
