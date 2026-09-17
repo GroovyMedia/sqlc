@@ -119,6 +119,22 @@ SELECT oid, name FROM sql_type
 WHERE namespace_oid = ? AND typtype = 'e' AND family_oid IS NULL
 ORDER BY oid;
 
+-- name: ListTypesOver :many
+-- The instances built on a type: arrays of it and domains standing on it.
+SELECT oid FROM sql_type
+WHERE element_oid = sqlc.arg(oid) OR base_oid = sqlc.arg(oid)
+ORDER BY oid;
+
+-- name: DeleteTypeArgs :exec
+DELETE FROM sql_type_arg WHERE type_oid = ?;
+
+-- name: DeleteOperatorsOverType :exec
+DELETE FROM sql_operator
+WHERE left_type_oid = sqlc.arg(oid) OR right_type_oid = sqlc.arg(oid) OR result_type_oid = sqlc.arg(oid);
+
+-- name: DeleteType :exec
+DELETE FROM sql_type WHERE oid = ?;
+
 -- name: CreateTypeRewrite :exec
 INSERT INTO sql_type_rewrite (dialect_oid, ord, pattern, template, cond)
 VALUES (?, ?, ?, ?, ?);

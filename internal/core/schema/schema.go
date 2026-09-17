@@ -28,6 +28,8 @@ func Apply(cat *core.Catalog, n ast.Node) error {
 		return applyDropTable(cat, v)
 	case *ast.CreateEnumStmt:
 		return applyCreateEnum(cat, v)
+	case *ast.DropTypeStmt:
+		return applyDropType(cat, v)
 	case *ast.CreateDomainStmt:
 		return applyCreateDomain(cat, v)
 	case *ast.CompositeTypeStmt:
@@ -377,6 +379,28 @@ func applyCreateEnum(cat *core.Catalog, stmt *ast.CreateEnumStmt) error {
 	}
 	_, err := cat.CreateTypeWithArgs(core.TypeSpec{Name: name, Typtype: "e", Category: "E"}, labels)
 	return err
+}
+
+// applyDropType removes each type a DROP TYPE names, and the arrays and
+// domains built on it; one that is not there is an error unless IF EXISTS
+// says otherwise.
+func applyDropType(cat *core.Catalog, stmt *ast.DropTypeStmt) error {
+	for _, tn := range stmt.Types {
+		name := declaredTypeName(tn)
+		if name == "" {
+			return fmt.Errorf("drop type with empty name")
+		}
+		if !cat.TypeDeclared(name) {
+			if stmt.IfExists {
+				continue
+			}
+			return fmt.Errorf("type %q does not exist", name)
+		}
+		if err := cat.DropDeclaredType(name); err != nil {
+			return fmt.Errorf("drop type %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // applyCreateDomain records a domain: a type of its own that stands on its

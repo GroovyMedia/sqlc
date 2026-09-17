@@ -480,6 +480,34 @@ func (q *Queries) DeleteClass(ctx context.Context, oid int64) error {
 	return err
 }
 
+const deleteOperatorsOverType = `-- name: DeleteOperatorsOverType :exec
+DELETE FROM sql_operator
+WHERE left_type_oid = ?1 OR right_type_oid = ?1 OR result_type_oid = ?1
+`
+
+func (q *Queries) DeleteOperatorsOverType(ctx context.Context, oid sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, deleteOperatorsOverType, oid)
+	return err
+}
+
+const deleteType = `-- name: DeleteType :exec
+DELETE FROM sql_type WHERE oid = ?
+`
+
+func (q *Queries) DeleteType(ctx context.Context, oid int64) error {
+	_, err := q.db.ExecContext(ctx, deleteType, oid)
+	return err
+}
+
+const deleteTypeArgs = `-- name: DeleteTypeArgs :exec
+DELETE FROM sql_type_arg WHERE type_oid = ?
+`
+
+func (q *Queries) DeleteTypeArgs(ctx context.Context, typeOid int64) error {
+	_, err := q.db.ExecContext(ctx, deleteTypeArgs, typeOid)
+	return err
+}
+
 const dialectFlag = `-- name: DialectFlag :one
 SELECT value FROM sql_dialect_flag WHERE dialect_oid = ? AND key = ?
 `
@@ -917,6 +945,36 @@ func (q *Queries) ListTypeRewrites(ctx context.Context, dialectOid int64) ([]Lis
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTypesOver = `-- name: ListTypesOver :many
+SELECT oid FROM sql_type
+WHERE element_oid = ?1 OR base_oid = ?1
+ORDER BY oid
+`
+
+// The instances built on a type: arrays of it and domains standing on it.
+func (q *Queries) ListTypesOver(ctx context.Context, oid sql.NullInt64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listTypesOver, oid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var oid int64
+		if err := rows.Scan(&oid); err != nil {
+			return nil, err
+		}
+		items = append(items, oid)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

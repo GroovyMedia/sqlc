@@ -377,6 +377,37 @@ func (c *Catalog) familyOIDByQualifiedName(name string) (int64, error) {
 	})
 }
 
+// DropDeclaredType removes a type a schema declared, with the operators it
+// was given and the arrays and domains built on it. The name is looked up
+// the way TypeDeclared looks it up.
+func (c *Catalog) DropDeclaredType(name string) error {
+	oid, err := c.familyOIDByQualifiedName(strings.ToLower(name))
+	if err != nil {
+		return err
+	}
+	return c.dropType(oid)
+}
+
+func (c *Catalog) dropType(oid int64) error {
+	ctx := context.Background()
+	over, err := c.q.ListTypesOver(ctx, sql.NullInt64{Int64: oid, Valid: true})
+	if err != nil {
+		return err
+	}
+	for _, o := range over {
+		if err := c.dropType(o); err != nil {
+			return err
+		}
+	}
+	if err := c.q.DeleteOperatorsOverType(ctx, sql.NullInt64{Int64: oid, Valid: true}); err != nil {
+		return err
+	}
+	if err := c.q.DeleteTypeArgs(ctx, oid); err != nil {
+		return err
+	}
+	return c.q.DeleteType(ctx, oid)
+}
+
 // TypeDeclared reports whether a schema's CREATE TYPE would redeclare a
 // type: one of that name in the namespace the name qualifies, or in the
 // default namespaces for a bare name.

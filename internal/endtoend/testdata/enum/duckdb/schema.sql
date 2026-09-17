@@ -10,3 +10,9 @@ CREATE TABLE people (
   last_mood mood,
   lvl hr.level
 );
+
+CREATE TYPE draft AS ENUM ('a', 'b');
+CREATE TYPE hr.draft AS ENUM ('c');
+DROP TYPE draft;
+DROP TYPE hr.draft;
+DROP TYPE IF EXISTS gone;

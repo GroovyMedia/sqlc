@@ -1244,6 +1244,15 @@ func (c *cc) convertDropStatement(n *dw.DropStatement) ast.Node {
 			stmt.Tables = append(stmt.Tables, parseTableName(name.Catalog, name.Schema, name.Name))
 		}
 		return stmt
+	case dw.DropTypeType:
+		stmt := &ast.DropTypeStmt{IfExists: n.IfExists}
+		for _, name := range n.Names {
+			stmt.Types = append(stmt.Types, &ast.TypeName{
+				Schema: schemaName(name.Schema),
+				Name:   identifier(name.Name),
+			})
+		}
+		return stmt
 	default:
 		return c.todo(n)
 	}
