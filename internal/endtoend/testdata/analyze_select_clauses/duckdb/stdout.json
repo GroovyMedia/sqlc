@@ -1,0 +1,176 @@
+[
+  {
+    "name": "LatestPostPerUser",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "user_id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "rn",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "bigint"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "TopPostOfUser",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "PostsPerUser",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "user_id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "SampleUsers",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "SamplePosts",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "user_id",
+          "type": {
+            "name": "bigint"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "SampleJoin",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  }
+]

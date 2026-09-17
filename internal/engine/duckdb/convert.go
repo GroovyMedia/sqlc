@@ -10,7 +10,12 @@ import (
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
 )
 
-type cc struct{}
+// cc converts darkwing's syntax tree to sqlc's. src is the text the
+// statements were parsed from, which is where an unsupported node's text
+// comes from.
+type cc struct {
+	src string
+}
 
 // loc returns a node's start offset for the Location fields of the sqlc AST.
 // darkwing marks synthesized nodes with a negative span.
@@ -43,7 +48,7 @@ func (c *cc) convert(node dw.Stmt) ast.Node {
 	case *dw.AlterStatement:
 		return c.convertAlterStatement(n)
 	default:
-		return todo(n)
+		return c.todo(n)
 	}
 }
 
@@ -63,7 +68,7 @@ func (c *cc) convertQueryNode(q dw.QueryNode) ast.Node {
 	case *dw.RecursiveCTENode:
 		return c.convertRecursiveCTENode(n)
 	default:
-		return todo(q)
+		return c.todo(q)
 	}
 }
 
@@ -167,6 +172,10 @@ func (c *cc) convertSelectNode(n *dw.SelectNode) ast.Node {
 	}
 
 	if from := c.convertTableRef(n.FromTable); from != nil {
+		// USING SAMPLE after the whole FROM samples what it produces.
+		if n.Sample != nil {
+			from = c.convertSample(from, n.Sample)
+		}
 		stmt.FromClause = &ast.List{Items: []ast.Node{from}}
 	}
 
@@ -174,7 +183,10 @@ func (c *cc) convertSelectNode(n *dw.SelectNode) ast.Node {
 		stmt.WhereClause = c.convertExpr(n.Where)
 	}
 
-	if len(n.GroupExpressions) > 0 {
+	if n.AggregateHandling == dw.ForceAggregates {
+		// GROUP BY ALL is also spelled GROUP BY *.
+		stmt.GroupClause = &ast.List{Items: []ast.Node{star()}}
+	} else if len(n.GroupExpressions) > 0 {
 		stmt.GroupClause = &ast.List{}
 		for _, expr := range n.GroupExpressions {
 			stmt.GroupClause.Items = append(stmt.GroupClause.Items, c.convertExpr(expr))
@@ -185,8 +197,35 @@ func (c *cc) convertSelectNode(n *dw.SelectNode) ast.Node {
 		stmt.HavingClause = c.convertExpr(n.Having)
 	}
 
+	if n.Qualify != nil {
+		stmt.QualifyClause = c.convertExpr(n.Qualify)
+	}
+
 	c.applyModifiers(stmt, n.Modifiers)
 	return stmt
+}
+
+// convertSample wraps a relation in the sample taken of it. The size, the
+// method and the seed are constants, kept the way a TABLESAMPLE clause
+// holds them; whether the size counts rows or percent is not.
+func (c *cc) convertSample(rel ast.Node, s *dw.SampleOptions) ast.Node {
+	sample := &ast.RangeTableSample{
+		Relation: rel,
+		Args:     &ast.List{Items: []ast.Node{c.convertConstant(&dw.ConstantExpression{Value: s.SampleSize})}},
+		Location: c.loc(s),
+	}
+	if s.Method != "" {
+		sample.Method = &ast.List{Items: []ast.Node{NewIdentifier(string(s.Method))}}
+	}
+	if s.Repeatable {
+		sample.Repeatable = &ast.A_Const{Val: &ast.Integer{Ival: s.Seed}}
+	}
+	return sample
+}
+
+// star is the bare * of GROUP BY * and ORDER BY *.
+func star() *ast.ColumnRef {
+	return &ast.ColumnRef{Fields: &ast.List{Items: []ast.Node{&ast.A_Star{}}}}
 }
 
 func (c *cc) convertSetOperationNode(n *dw.SetOperationNode) ast.Node {
@@ -199,7 +238,7 @@ func (c *cc) convertSetOperationNode(n *dw.SetOperationNode) ast.Node {
 	case dw.SetOpIntersect:
 		op = ast.Intersect
 	default:
-		return todo(n)
+		return c.todo(n)
 	}
 
 	// DuckDB v2 set operations are n-ary; sqlc's are binary, so a chain
@@ -208,7 +247,7 @@ func (c *cc) convertSetOperationNode(n *dw.SetOperationNode) ast.Node {
 	for _, input := range n.Inputs {
 		arg, ok := c.convertQueryNode(input).(*ast.SelectStmt)
 		if !ok {
-			return todo(n)
+			return c.todo(n)
 		}
 		if stmt == nil {
 			stmt = arg
@@ -222,7 +261,7 @@ func (c *cc) convertSetOperationNode(n *dw.SetOperationNode) ast.Node {
 		}
 	}
 	if stmt == nil {
-		return todo(n)
+		return c.todo(n)
 	}
 	stmt.WithClause = c.convertWithClause(n.CTEs)
 	c.applyModifiers(stmt, n.Modifiers)
@@ -232,11 +271,11 @@ func (c *cc) convertSetOperationNode(n *dw.SetOperationNode) ast.Node {
 func (c *cc) convertRecursiveCTENode(n *dw.RecursiveCTENode) ast.Node {
 	larg, ok := c.convertQueryNode(n.Left).(*ast.SelectStmt)
 	if !ok {
-		return todo(n)
+		return c.todo(n)
 	}
 	rarg, ok := c.convertQueryNode(n.Right).(*ast.SelectStmt)
 	if !ok {
-		return todo(n)
+		return c.todo(n)
 	}
 	stmt := &ast.SelectStmt{
 		Op:   ast.Union,
@@ -266,6 +305,11 @@ func (c *cc) convertOrderBys(orders []dw.OrderByNode) *ast.List {
 		sortBy := &ast.SortBy{
 			Node:     c.convertExpr(order.Expression),
 			Location: c.loc(order.Expression),
+		}
+		// ORDER BY ALL parses as a synthesized COLUMNS(*), and is also
+		// spelled ORDER BY *.
+		if se, ok := order.Expression.(*dw.StarExpression); ok && se.Columns && se.Pos() < 0 {
+			sortBy.Node = star()
 		}
 		switch order.Type {
 		case dw.OrderAscending:
@@ -330,6 +374,9 @@ func (c *cc) convertTableRef(ref dw.TableRef) ast.Node {
 		if alias := c.convertAlias(t.Alias, t.ColumnNameAlias); alias != nil {
 			rv.Alias = alias
 		}
+		if t.Sample != nil {
+			return c.convertSample(rv, t.Sample)
+		}
 		return rv
 	case *dw.JoinRef:
 		return c.convertJoinRef(t)
@@ -348,7 +395,7 @@ func (c *cc) convertTableRef(ref dw.TableRef) ast.Node {
 		}
 		return sub
 	default:
-		return todo(ref)
+		return c.todo(ref)
 	}
 }
 
@@ -385,7 +432,7 @@ func (c *cc) convertJoinRef(t *dw.JoinRef) ast.Node {
 func (c *cc) convertTableFunctionRef(t *dw.TableFunctionRef) ast.Node {
 	call, ok := c.convertExpr(t.Function).(*ast.FuncCall)
 	if !ok {
-		return todo(t)
+		return c.todo(t)
 	}
 	return &ast.RangeFunction{
 		Functions:  &ast.List{Items: []ast.Node{call}},
@@ -436,7 +483,7 @@ func (c *cc) convertExpr(expr dw.Expr) ast.Node {
 	case *dw.WindowExpression:
 		return c.convertWindow(e)
 	default:
-		return todo(expr)
+		return c.todo(expr)
 	}
 }
 
@@ -498,7 +545,7 @@ func (c *cc) convertConstant(e *dw.ConstantExpression) ast.Node {
 	case v.Kind == dw.ValueString:
 		konst.Val = &ast.String{Str: v.Str}
 	default:
-		return todo(e)
+		return c.todo(e)
 	}
 	return konst
 }
@@ -536,7 +583,7 @@ func (c *cc) convertFunction(e *dw.FunctionExpression) ast.Node {
 				Location: c.loc(e),
 			}
 		default:
-			return todo(e)
+			return c.todo(e)
 		}
 	}
 
@@ -586,7 +633,7 @@ func (c *cc) convertOperator(e *dw.OperatorExpression) ast.Node {
 		return c.convertBoolExpr(ast.BoolExprTypeNot, e)
 	case dw.OperatorIsNull, dw.OperatorIsNotNull:
 		if len(e.Operands) != 1 {
-			return todo(e)
+			return c.todo(e)
 		}
 		test := ast.NullTestTypeIsNull
 		if e.Type == dw.OperatorIsNotNull {
@@ -620,7 +667,7 @@ func (c *cc) convertOperator(e *dw.OperatorExpression) ast.Node {
 		}
 		return arr
 	default:
-		return todo(e)
+		return c.todo(e)
 	}
 }
 
@@ -675,7 +722,7 @@ func (c *cc) convertComparison(e *dw.ComparisonExpression) ast.Node {
 		case dw.CompareNotDistinctFrom:
 			kind, op = ast.A_Expr_Kind_NOT_DISTINCT, "="
 		default:
-			return todo(e)
+			return c.todo(e)
 		}
 	}
 	return &ast.A_Expr{
@@ -721,7 +768,7 @@ func (c *cc) convertCast(e *dw.CastExpression) ast.Node {
 	case e.ResolvedType != "":
 		cast.TypeName = &ast.TypeName{Name: identifier(e.ResolvedType)}
 	default:
-		return todo(e)
+		return c.todo(e)
 	}
 	return cast
 }
@@ -761,7 +808,7 @@ func (c *cc) convertSubquery(e *dw.SubqueryExpression) ast.Node {
 			link.OperName = &ast.List{Items: []ast.Node{&ast.String{Str: op}}}
 		}
 	default:
-		return todo(e)
+		return c.todo(e)
 	}
 	return link
 }
@@ -770,7 +817,7 @@ func (c *cc) convertStar(e *dw.StarExpression) ast.Node {
 	// COLUMNS(...) and EXCLUDE/REPLACE/RENAME modifiers have no equivalent.
 	if e.Columns || e.Expr != nil || len(e.ExcludeList) > 0 ||
 		len(e.QualifiedExcludeList) > 0 || len(e.ReplaceList) > 0 || len(e.RenameList) > 0 {
-		return todo(e)
+		return c.todo(e)
 	}
 	fields := &ast.List{}
 	if e.RelationName != "" {
@@ -952,7 +999,7 @@ func (c *cc) convertSetClause(set *dw.UpdateSetInfo) *ast.List {
 func (c *cc) convertUpdateStatement(n *dw.UpdateStatement) ast.Node {
 	target := c.convertTableRef(n.Table)
 	if target == nil {
-		return todo(n)
+		return c.todo(n)
 	}
 	stmt := &ast.UpdateStmt{
 		Relations:  &ast.List{Items: []ast.Node{target}},
@@ -975,7 +1022,7 @@ func (c *cc) convertUpdateStatement(n *dw.UpdateStatement) ast.Node {
 func (c *cc) convertDeleteStatement(n *dw.DeleteStatement) ast.Node {
 	target := c.convertTableRef(n.Table)
 	if target == nil {
-		return todo(n)
+		return c.todo(n)
 	}
 	stmt := &ast.DeleteStmt{
 		Relations:  &ast.List{Items: []ast.Node{target}},
@@ -999,7 +1046,7 @@ func (c *cc) convertDeleteStatement(n *dw.DeleteStatement) ast.Node {
 func (c *cc) convertTruncateStatement(n *dw.TruncateStatement) ast.Node {
 	target := c.convertTableRef(n.Table)
 	if target == nil {
-		return todo(n)
+		return c.todo(n)
 	}
 	return &ast.TruncateStmt{
 		Relations: &ast.List{Items: []ast.Node{target}},
@@ -1015,7 +1062,7 @@ func (c *cc) convertCreateStatement(n *dw.CreateStatement) ast.Node {
 	case *dw.CreateTypeInfo:
 		return c.convertCreateTypeInfo(info)
 	default:
-		return todo(n)
+		return c.todo(n)
 	}
 }
 
@@ -1118,7 +1165,7 @@ func (c *cc) convertCreateViewInfo(info *dw.CreateViewInfo) ast.Node {
 
 func (c *cc) convertCreateTypeInfo(info *dw.CreateTypeInfo) ast.Node {
 	if !info.IsEnum {
-		return todo(info)
+		return c.todo(info)
 	}
 	stmt := &ast.CreateEnumStmt{
 		TypeName: &ast.TypeName{
@@ -1142,13 +1189,13 @@ func (c *cc) convertDropStatement(n *dw.DropStatement) ast.Node {
 		}
 		return stmt
 	default:
-		return todo(n)
+		return c.todo(n)
 	}
 }
 
 func (c *cc) convertAlterStatement(n *dw.AlterStatement) ast.Node {
 	if n.Entity != dw.AlterEntityTable {
-		return todo(n)
+		return c.todo(n)
 	}
 	table := parseTableName(n.Name.Catalog, n.Name.Schema, n.Name.Name)
 
@@ -1235,7 +1282,7 @@ func (c *cc) convertAlterStatement(n *dw.AlterStatement) ast.Node {
 	}
 	switch len(stmts) {
 	case 0:
-		return todo(n)
+		return c.todo(n)
 	case 1:
 		return stmts[0]
 	default:

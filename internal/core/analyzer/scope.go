@@ -70,6 +70,10 @@ func (a *analyzer) appendFromItem(sc *scope, item ast.Node) error {
 		}
 		sc.rels = append(sc.rels, rel)
 		return nil
+	case *ast.RangeTableSample:
+		// A sample has the relation's columns; how many rows is not a
+		// question of type.
+		return a.appendFromItem(sc, v.Relation)
 	case *ast.List:
 		// Some engines report a comma-separated FROM as a nested list.
 		for _, item := range listItems(v) {

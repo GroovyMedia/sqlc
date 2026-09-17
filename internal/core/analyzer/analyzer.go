@@ -199,6 +199,11 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 	}
 	if items := listItems(s.GroupClause); items != nil {
 		for _, g := range items {
+			// GROUP BY * is DuckDB's GROUP BY ALL: every column not under
+			// an aggregate, which names no expression to type.
+			if isStarRef(g) {
+				continue
+			}
 			if _, err := a.typeExpr(g); err != nil {
 				return fmt.Errorf("group by: %w", err)
 			}
@@ -207,6 +212,11 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 	if s.HavingClause != nil {
 		if _, err := a.typeExpr(s.HavingClause); err != nil {
 			return fmt.Errorf("having: %w", err)
+		}
+	}
+	if s.QualifyClause != nil {
+		if _, err := a.typeExpr(s.QualifyClause); err != nil {
+			return fmt.Errorf("qualify: %w", err)
 		}
 	}
 
@@ -230,6 +240,11 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 	}
 	for _, item := range listItems(s.SortClause) {
 		if sb, ok := item.(*ast.SortBy); ok {
+			// ORDER BY * is DuckDB's ORDER BY ALL: every result column in
+			// turn, which names no expression to type.
+			if isStarRef(sb.Node) {
+				continue
+			}
 			if _, err := a.typeExpr(sb.Node); err != nil {
 				return fmt.Errorf("order by: %w", err)
 			}
@@ -360,6 +375,13 @@ func renameColumns(rel *scopeRel, names *ast.List) {
 			rel.cols[i].Name = s.Str
 		}
 	}
+}
+
+// isStarRef reports a bare star, which some clauses take for "every
+// column".
+func isStarRef(n ast.Node) bool {
+	cr, ok := n.(*ast.ColumnRef)
+	return ok && isStar(flattenFields(cr.Fields))
 }
 
 func listItems(l *ast.List) []ast.Node {
