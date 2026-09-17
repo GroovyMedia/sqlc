@@ -336,9 +336,11 @@ func Check(ctx context.Context, binary string, c endtoend.Case) (string, error) 
 	return c.Compare(got)
 }
 
-// readCatalog reads the tables and enum types the schema created.
+// readCatalog reads the tables and enum types the schema created. An enum
+// is named the way the analysis names it: bare in the default schema, and
+// qualified by its schema anywhere else.
 func (a *analyzer) readCatalog(ctx context.Context) error {
-	rows, err := a.query(ctx, `SELECT type_name, labels FROM duckdb_types() WHERE database_name = 'memory' AND NOT internal AND logical_type = 'ENUM' ORDER BY type_name`)
+	rows, err := a.query(ctx, `SELECT schema_name, type_name, labels FROM duckdb_types() WHERE database_name = 'memory' AND NOT internal AND logical_type = 'ENUM' ORDER BY schema_name, type_name`)
 	if err != nil {
 		return err
 	}
@@ -346,7 +348,11 @@ func (a *analyzer) readCatalog(ctx context.Context) error {
 	for _, row := range rows {
 		var labels []string
 		json.Unmarshal(row["labels"], &labels)
-		a.enums[strings.ToLower(str(row["type_name"]))] = labels
+		name := strings.ToLower(str(row["type_name"]))
+		if schema := strings.ToLower(str(row["schema_name"])); schema != "main" {
+			name = schema + "." + name
+		}
+		a.enums[name] = labels
 	}
 	rows, err = a.query(ctx, `SELECT table_name, column_name, data_type, is_nullable FROM duckdb_columns() WHERE database_name = 'memory' ORDER BY table_oid, column_index`)
 	if err != nil {
