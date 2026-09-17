@@ -264,6 +264,14 @@ func duckdbType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.
 // type, so an override still gets the driver's value converted.
 func duckdbScanner(typ string, col *plugin.Column) string {
 	if isSlice(typ) {
+		if elem := strings.TrimPrefix(typ, "[]"); isSlice(elem) {
+			// A LIST of LISTs. The helper needs the leaf type spelled
+			// out: a generic function cannot take it from a nested slice.
+			for isSlice(elem) {
+				elem = strings.TrimPrefix(elem, "[]")
+			}
+			return "duckdbNested[" + elem + "]"
+		}
 		return "duckdbList"
 	}
 	if col == nil || col.Type == nil {

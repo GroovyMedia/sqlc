@@ -6,7 +6,8 @@ CREATE TABLE things (
   ls     VARCHAR[],
   ld     DECIMAL(10,2)[],
   lg     genre[],
-  lu     UUID[]
+  lu     UUID[],
+  ll     INTEGER[][]
 );
 
 CREATE TABLE parts (

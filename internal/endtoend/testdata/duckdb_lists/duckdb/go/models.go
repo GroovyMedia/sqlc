@@ -66,4 +66,5 @@ type Thing struct {
 	Ld []string
 	Lg []Genre
 	Lu []uuid.UUID
+	Ll [][]int32
 }

@@ -12,7 +12,7 @@ import (
 )
 
 const createThing = `-- name: CreateThing :exec
-INSERT INTO things (id, li, ls, lg, lu) VALUES ($1, $2, $3, $4, $5);
+INSERT INTO things (id, li, ls, lg, lu, ll) VALUES ($1, $2, $3, $4, $5, $6);
 `
 
 type CreateThingParams struct {
@@ -21,6 +21,7 @@ type CreateThingParams struct {
 	Ls []string
 	Lg []Genre
 	Lu []uuid.UUID
+	Ll [][]int32
 }
 
 func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error {
@@ -30,12 +31,13 @@ func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error 
 		duckdbListParam(arg.Ls),
 		duckdbListParam(arg.Lg),
 		duckdbListParam(arg.Lu),
+		duckdbListParam(arg.Ll),
 	)
 	return err
 }
 
 const getThing = `-- name: GetThing :one
-SELECT id, li, ls, ld, lg, lu FROM things WHERE id = $1;
+SELECT id, li, ls, ld, lg, lu, ll FROM things WHERE id = $1;
 `
 
 func (q *Queries) GetThing(ctx context.Context, id int32) (Thing, error) {
@@ -48,6 +50,7 @@ func (q *Queries) GetThing(ctx context.Context, id int32) (Thing, error) {
 		duckdbList(&i.Ld),
 		duckdbList(&i.Lg),
 		duckdbList(&i.Lu),
+		duckdbNested[int32](&i.Ll),
 	)
 	return i, err
 }

@@ -57,6 +57,43 @@ func (s duckdbListScanner[T]) Scan(src any) error {
 	return nil
 }
 
+// duckdbNested scans a LIST of LISTs into a nested Go slice whose leaf
+// type is E, each leaf the way a column of its type scans. dst points to
+// the slice. A NULL at any depth scans as a nil slice.
+func duckdbNested[E any](dst any) sql.Scanner {
+	return duckdbNestedScanner[E]{reflect.ValueOf(dst).Elem()}
+}
+
+type duckdbNestedScanner[E any] struct {
+	dst reflect.Value
+}
+
+func (s duckdbNestedScanner[E]) Scan(src any) error {
+	return duckdbScanNested[E](s.dst, src)
+}
+
+func duckdbScanNested[E any](dst reflect.Value, src any) error {
+	if leaf, ok := dst.Addr().Interface().(*E); ok {
+		return duckdbScanValue(leaf, src)
+	}
+	if src == nil {
+		dst.Set(reflect.Zero(dst.Type()))
+		return nil
+	}
+	items, ok := src.([]any)
+	if !ok {
+		return fmt.Errorf("cannot scan %T into %s", src, dst.Type())
+	}
+	out := reflect.MakeSlice(dst.Type(), len(items), len(items))
+	for i, item := range items {
+		if err := duckdbScanNested[E](out.Index(i), item); err != nil {
+			return err
+		}
+	}
+	dst.Set(out)
+	return nil
+}
+
 // duckdbListParam binds a list parameter. A nil slice is NULL. A slice
 // of bools, numbers, strings or UUIDs, nested or not, is handed over as a
 // duckdbListArg, and a JSON message or a named string type such as a
