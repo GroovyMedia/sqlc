@@ -82,9 +82,13 @@ type typeRow struct {
 type functionRow struct {
 	Name           string   `json:"function_name"`
 	FunctionType   string   `json:"function_type"`
+	Parameters     []string `json:"parameters"`
 	ParameterTypes []string `json:"parameter_types"`
 	Varargs        *string  `json:"varargs"`
 	ReturnType     *string  `json:"return_type"`
+	// MacroDefinition is the expression a macro expands to; the catalog
+	// types neither its parameters nor its result.
+	MacroDefinition *string `json:"macro_definition"`
 }
 
 // metaTypes are type ids that never describe a column's value: sentinels and
@@ -226,52 +230,76 @@ func isOperatorName(name string) bool {
 
 // neverNull lists the scalar functions whose result is not NULL when an
 // argument is: DuckDB binds them with special NULL handling rather than
-// the default, which returns NULL for any NULL argument.
+// the default, which returns NULL for any NULL argument. The
+// concatenation of lists takes a NULL list as an empty one, and so do
+// the macros that append to a list through it. greatest and least, NULL
+// only when every argument is, and concat_ws, NULL only when its
+// separator is, are not listed: the seed cannot say which argument
+// counts, and a result that propagates from any argument is the safe
+// side.
 var neverNull = map[string]bool{
-	"concat":      true,
-	"concat_ws":   true,
-	"greatest":    true,
-	"hash":        true,
-	"json_object": true,
-	"least":       true,
-	"list_pack":   true,
-	"list_value":  true,
-	"row":         true,
-	"struct_pack": true,
-	"typeof":      true,
+	"array_append":     true,
+	"array_cat":        true,
+	"array_concat":     true,
+	"array_prepend":    true,
+	"array_push_back":  true,
+	"array_push_front": true,
+	"concat":           true,
+	"hash":             true,
+	"json_object":      true,
+	"list_append":      true,
+	"list_cat":         true,
+	"list_concat":      true,
+	"list_pack":        true,
+	"list_prepend":     true,
+	"list_value":       true,
+	"row":              true,
+	"struct_pack":      true,
+	"typeof":           true,
 }
 
 // mayBeNull lists the scalar and window functions whose result can be NULL
-// when no argument is: a lookup that finds nothing, a window row with no
-// neighbour, an aggregate over an empty list. The number is the fewest
-// arguments an overload takes for that to hold — json_type(j) always has an
-// answer, json_type(j, path) has none for a path that is not there.
+// when no argument is: a lookup that finds nothing, a conversion that
+// does not apply, a window row with no neighbour or a window frame that
+// can be empty, an aggregate over an empty list. The number is the
+// fewest arguments an overload takes for that to hold — json_type(j)
+// always has an answer, json_type(j, path) has none for a path that is
+// not there.
 var mayBeNull = map[string]int{
-	"aggregate":              2,
-	"array_aggr":             2,
-	"array_aggregate":        2,
-	"array_extract":          2,
-	"array_indexof":          2,
-	"array_position":         2,
-	"json_array_length":      2,
-	"json_extract":           2,
-	"json_extract_path":      2,
-	"json_extract_path_text": 2,
-	"json_extract_string":    2,
-	"json_keys":              2,
-	"json_type":              2,
-	"json_value":             2,
-	"lag":                    1,
-	"lead":                   1,
-	"list_aggr":              2,
-	"list_aggregate":         2,
-	"list_element":           2,
-	"list_extract":           2,
-	"list_indexof":           2,
-	"list_position":          2,
-	"map_extract_value":      2,
-	"nth_value":              2,
-	"try_strptime":           2,
+	"aggregate":                     2,
+	"array_aggr":                    2,
+	"array_aggregate":               2,
+	"array_extract":                 2,
+	"array_indexof":                 2,
+	"array_position":                2,
+	"array_to_string":               2,
+	"array_to_string_comma_default": 2,
+	"first_value":                   1,
+	"from_json":                     2,
+	"get_block_size":                1,
+	"json_array_length":             2,
+	"json_extract":                  2,
+	"json_extract_path":             2,
+	"json_extract_path_text":        2,
+	"json_extract_string":           2,
+	"json_keys":                     2,
+	"json_transform":                2,
+	"json_type":                     2,
+	"json_value":                    2,
+	"lag":                           1,
+	"last_value":                    1,
+	"lead":                          1,
+	"list_aggr":                     2,
+	"list_aggregate":                2,
+	"list_element":                  2,
+	"list_extract":                  2,
+	"list_indexof":                  2,
+	"list_position":                 2,
+	"map_extract_value":             2,
+	"nth_value":                     2,
+	"nullif":                        2,
+	"try_strptime":                  2,
+	"union_extract":                 2,
 }
 
 func functionKind(functionType string) string {
@@ -288,7 +316,7 @@ func functionKind(functionType string) string {
 func readFunctions(ctx context.Context, binary string, known map[string]bool) ([]dialect.Function, []dialect.Operator, error) {
 	var rows []functionRow
 	err := query(ctx, binary, `
-SELECT DISTINCT function_name, function_type, parameter_types, varargs, return_type
+SELECT DISTINCT function_name, function_type, parameters, parameter_types, varargs, return_type, macro_definition
 FROM duckdb_functions()
 WHERE database_name = 'system'
   AND schema_name = 'main'
@@ -302,8 +330,15 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 	var operators []dialect.Operator
 	seenFunc := map[string]bool{}
 	seenOp := map[string]bool{}
+	// A macro is listed where its first row falls; the aggregates'
+	// single-argument overloads type the macros that aggregate a list.
+	macroAt := map[string]int{}
+	aggregates := map[string][]dialect.Function{}
 	for _, row := range rows {
 		if row.ReturnType == nil {
+			if _, seen := macroAt[row.Name]; row.FunctionType == "macro" && !seen {
+				macroAt[row.Name] = len(funcs)
+			}
 			continue
 		}
 		returns, ok := seedTypeName(*row.ReturnType, known)
@@ -352,17 +387,20 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 			continue
 		}
 
+		// count returns 0 over no rows and for a NULL argument; count_if
+		// is a sum of conditions, NULL like any other aggregate.
+		isCount := row.Name == "count" || row.Name == "count_star"
 		fn := dialect.Function{
 			Name:    row.Name,
 			Kind:    functionKind(row.FunctionType),
 			Returns: returns,
 			// An aggregate over no rows returns NULL — except count,
 			// which returns 0 — and so does a lookup that finds nothing.
-			Nullable: (row.FunctionType == "aggregate" && !strings.HasPrefix(row.Name, "count")) ||
+			Nullable: (row.FunctionType == "aggregate" && !isCount) ||
 				(mayBeNull[row.Name] > 0 && len(args) >= mayBeNull[row.Name]),
 			// A function's result is NULL when an argument is, except for
 			// the ones that handle NULL themselves.
-			NeverNull: strings.HasPrefix(row.Name, "count") || neverNull[row.Name],
+			NeverNull: isCount || neverNull[row.Name],
 		}
 		for _, arg := range args {
 			fn.Args = append(fn.Args, dialect.Arg{Type: arg})
@@ -380,9 +418,37 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 			continue
 		}
 		seenFunc[key] = true
+		if fn.Kind == "a" && len(args) == 1 && row.Varargs == nil {
+			aggregates[fn.Name] = append(aggregates[fn.Name], fn)
+		}
 		funcs = append(funcs, fn)
 	}
-	return funcs, operators, nil
+
+	macros, err := readMacros(ctx, binary, rows, aggregates, known)
+	if err != nil {
+		return nil, nil, err
+	}
+	return spliceMacros(funcs, macros, macroAt), operators, nil
+}
+
+// spliceMacros lists each macro's overloads at the place its first row
+// fell among the functions.
+func spliceMacros(funcs []dialect.Function, macros map[string][]dialect.Function, macroAt map[string]int) []dialect.Function {
+	names := make([]string, 0, len(macroAt))
+	for name := range macroAt {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return macroAt[names[i]] < macroAt[names[j]] || macroAt[names[i]] == macroAt[names[j]] && names[i] < names[j]
+	})
+	var out []dialect.Function
+	at := 0
+	for _, name := range names {
+		out = append(out, funcs[at:macroAt[name]]...)
+		out = append(out, macros[name]...)
+		at = macroAt[name]
+	}
+	return append(out, funcs[at:]...)
 }
 
 // Generate reads the dialect from the CLI.

@@ -1034,8 +1034,10 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	}
 	// A field read from a struct by name — struct_extract(s, 'a'), which is
 	// also how DuckDB binds s['a'] — has the field's type when the struct's
-	// type names it, and may be NULL whatever the struct is.
-	if (name == "struct_extract" || name == "array_extract") && len(args) == 2 {
+	// type names it, and may be NULL whatever the struct is. So does a
+	// member read from a union by its tag, union_extract(u, 'a'), which is
+	// NULL when the union holds another member.
+	if (name == "struct_extract" || name == "array_extract" || name == "union_extract") && len(args) == 2 {
 		if t, ok := a.typeFieldPath(argTypes[0], []string{stringConst(args[1])}); ok {
 			return t, nil
 		}
