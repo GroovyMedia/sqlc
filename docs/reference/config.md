@@ -191,6 +191,7 @@ The `gen` mapping supports the following keys:
   - Customize the name of the copyfrom file. Defaults to `copyfrom.go`.
 - `output_files_suffix`:
   - If specified the suffix will be added to the name of the generated files.
+  - Two generated files may not share a name; sqlc reports an error instead of writing one over the other. The `duckdb` engine also writes a helper file named `duckdb.go`, which has no option of its own.
 - `query_parameter_limit`:
   - The number of positional arguments that will be generated for Go functions. To always emit a parameter struct, set this to `0`. Defaults to `1`.
 - `rename`:

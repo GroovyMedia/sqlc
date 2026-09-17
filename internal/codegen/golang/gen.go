@@ -266,6 +266,9 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		if !strings.HasSuffix(name, ".go") {
 			name += ".go"
 		}
+		if _, dup := output[name]; dup {
+			return fmt.Errorf("output file %s would be written twice; choose another output_*_file_name", name)
+		}
 		output[name] = string(code)
 		return nil
 	}
@@ -291,6 +294,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 	if options.OutputBatchFileName != "" {
 		batchFileName = options.OutputBatchFileName
 	}
+	// The DuckDB helper file has no option of its own; the name is reserved.
 	duckdbFileName := "duckdb.go"
 
 	if err := execute(dbFileName, "dbFile"); err != nil {
