@@ -167,6 +167,9 @@ func (t text) group(i int) int {
 // or "*" for every column of the qualifier.
 type ref struct {
 	qualifier, column string
+	// list marks a parameter that holds a list of the column's values, as
+	// the one in "col = ANY($1)" does.
+	list bool
 }
 
 // readRef reads a dotted name starting at i, returning the parts and the
@@ -339,9 +342,10 @@ func (t text) readTables(i int, into *[]tableRef) int {
 
 // item is one entry of a select list or a RETURNING list.
 type item struct {
-	star bool   // every column of qualifier, or of every table
-	ref  *ref   // a column reference, when the item is one
-	name string // the alias, or the column name of a reference
+	star  bool   // every column of qualifier, or of every table
+	ref   *ref   // a column reference, when the item is one
+	name  string // the alias, or the column name of a reference
+	param string // the parameter, when the item is a bare one
 }
 
 // items splits a select or RETURNING list into its items, given the index
@@ -379,6 +383,10 @@ func (t text) item(start, end int) item {
 		return it
 	}
 	var it item
+	if end == start+1 && t.at(start).kind == 'p' {
+		it.param = t.at(start).text
+		return it
+	}
 	if len(parts) > 0 && j == end {
 		it.ref = &ref{column: parts[len(parts)-1]}
 		if len(parts) > 1 {
@@ -483,13 +491,14 @@ var comparisons = map[string]bool{"=": true, "<>": true, "!=": true, "<": true, 
 
 // partner finds the column a parameter is compared with or assigned to:
 // the column reference on the other side of the comparison, LIKE or IN
-// it is an operand of, or the column a SET assigns it to.
+// it is an operand of, or the column a SET assigns it to. A parameter
+// quantified by ANY or ALL holds a list of the column's values.
 func (t text) partner(k string) (ref, bool) {
 	i := t.find(k)
 	if i < 0 {
 		return ref{}, false
 	}
-	// col op $k, col [NOT] LIKE $k, col IN ($k, ...)
+	// col op $k, col [NOT] LIKE $k, col IN ($k, ...), col op ANY($k)
 	j := i - 1
 	if t.isOp(j, "(") || t.isOp(j, ",") {
 		for j >= 0 && (t.isOp(j, ",") || t.at(j).kind == 'p' || t.at(j).kind == 's' || t.at(j).kind == 'n') {
@@ -497,6 +506,12 @@ func (t text) partner(k string) (ref, bool) {
 		}
 		if t.isOp(j, "(") {
 			j--
+		}
+	}
+	if (t.isWord(j, "any") || t.isWord(j, "all")) && t.at(j-1).kind == 'o' && comparisons[t.at(j-1).text] {
+		if r, ok := t.refEnding(j - 2); ok {
+			r.list = true
+			return r, true
 		}
 	}
 	if t.at(j).kind == 'o' && comparisons[t.at(j).text] || t.isWord(j, "like") || t.isWord(j, "ilike") || t.isWord(j, "glob") || t.isWord(j, "in") {
@@ -627,6 +642,17 @@ func (t text) valuesPosition(k string) (int, bool) {
 			return pos, true
 		}
 		return 0, false
+	}
+	return 0, false
+}
+
+// selectPosition reports, for a parameter that is an item of an INSERT's
+// SELECT, the index of the column it is selected into.
+func (t text) selectPosition(k string) (int, bool) {
+	for pos, it := range t.selectItems() {
+		if it.param == k {
+			return pos, true
+		}
 	}
 	return 0, false
 }

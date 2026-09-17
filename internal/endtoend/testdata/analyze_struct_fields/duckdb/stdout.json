@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Fields",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "a",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "b",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "x",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      },
+      {
+        "name": "tags",
+        "type": {
+          "name": "array",
+          "nullable": true,
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "a2",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "b2",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "first_a",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  }
+]

@@ -26,7 +26,7 @@ const DefaultVersion = "v2.0-cyanoptera"
 
 // GeneratedFrom is the build the committed dialect was generated from, as
 // `duckdb --version` reports it. Update it when regenerating.
-const GeneratedFrom = "v2.0.0-alpha41396 (Cyanoptera) d41e527b18"
+const GeneratedFrom = "v2.0.0-alpha42230 (Cyanoptera) 8aae2b52b6"
 
 // channelURL is the download address of a channel's CLI tarball for a
 // platform. DuckDB publishes one macOS build for both architectures.

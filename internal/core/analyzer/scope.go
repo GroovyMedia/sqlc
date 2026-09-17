@@ -275,7 +275,9 @@ func (s *scope) joinedMatch(j int) match {
 }
 
 // bindRangeFunction binds a function called in FROM. A set-returning function
-// stands in for a relation of a single column named after it.
+// stands in for a relation of a single column named after it, or after a
+// bare alias, as "FROM unnest(x) AS t" makes t the column. WITH ORDINALITY
+// adds the row's number as a second column, and then both keep their names.
 func (a *analyzer) bindRangeFunction(rf *ast.RangeFunction) (scopeRel, error) {
 	call := findFuncCall(rf.Functions)
 	if call == nil {
@@ -286,23 +288,37 @@ func (a *analyzer) bindRangeFunction(rf *ast.RangeFunction) (scopeRel, error) {
 	if err != nil {
 		return scopeRel{}, err
 	}
-	if len(overloads) == 0 {
+	// unnest is typed by the analyzer where the seed cannot describe it.
+	if len(overloads) == 0 && name != "unnest" {
 		return scopeRel{}, fmt.Errorf("unknown function %q", name)
 	}
 
 	// The arguments are typed against the scope built so far, which is what
 	// gives a placeholder passed to the function its type.
-	if _, err := a.typeFuncCall(call); err != nil {
+	t, err := a.typeFuncCall(call)
+	if err != nil {
 		return scopeRel{}, err
 	}
 
-	p := overloads[0]
 	rel := scopeRel{
 		alias: name,
-		cols:  []core.ClassColumn{{Name: name, TypeOID: p.ReturnTypeOID, NotNull: !p.ReturnNullable}},
+		cols:  []core.ClassColumn{{Name: name, TypeOID: t.typeOID, Type: a.exprOf(t), NotNull: !t.nullable}},
 	}
 	if rf.Alias != nil && rf.Alias.Aliasname != nil && *rf.Alias.Aliasname != "" {
 		rel.alias = *rf.Alias.Aliasname
+		if len(listItems(rf.Alias.Colnames)) == 0 && !rf.Ordinality {
+			rel.cols[0].Name = rel.alias
+		}
+	}
+	if rf.Ordinality {
+		ordinal := core.ClassColumn{Name: "ordinality", NotNull: true}
+		if oid, err := a.cat.TypeOID("bigint"); err == nil {
+			ordinal.TypeOID = oid
+		}
+		rel.cols = append(rel.cols, ordinal)
+	}
+	if rf.Alias != nil {
+		renameColumns(&rel, rf.Alias.Colnames)
 	}
 	return rel, nil
 }

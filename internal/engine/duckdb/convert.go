@@ -435,9 +435,36 @@ func (c *cc) convertExpr(expr dw.Expr) ast.Node {
 		}
 	case *dw.WindowExpression:
 		return c.convertWindow(e)
+	case *dw.LambdaExpression:
+		return c.convertLambda(e)
 	default:
 		return todo(expr)
 	}
+}
+
+// convertLambda converts what darkwing parses as a single-arrow lambda,
+// "doc -> 'key'": outside a lambda function DuckDB binds it as the JSON
+// extract operator, json_extract(doc, 'key'). The lambda keyword form
+// has no sqlc node.
+func (c *cc) convertLambda(e *dw.LambdaExpression) ast.Node {
+	if e.SyntaxType != dw.LambdaSingleArrow {
+		return todo(e)
+	}
+	return c.call("json_extract", e, e.LHS, e.Expr)
+}
+
+// call is a call of a built-in function over operands, which is how DuckDB
+// binds an operator that is a function in its catalog.
+func (c *cc) call(name string, at dw.Node, operands ...dw.Expr) *ast.FuncCall {
+	fc := &ast.FuncCall{
+		Funcname: &ast.List{Items: []ast.Node{&ast.String{Str: name}}},
+		Args:     &ast.List{},
+		Location: c.loc(at),
+	}
+	for _, operand := range operands {
+		fc.Args.Items = append(fc.Args.Items, c.convertExpr(operand))
+	}
+	return fc
 }
 
 func (c *cc) convertColumnRef(e *dw.ColumnRefExpression) *ast.ColumnRef {
@@ -552,13 +579,25 @@ func (c *cc) convertFunction(e *dw.FunctionExpression) ast.Node {
 		fc.Funcname.Items = append(fc.Funcname.Items, &ast.String{Str: schema})
 	}
 
+	// NULLIF is a macro over CASE in DuckDB, which sqlc's AST spells as
+	// its own kind of expression.
+	if name == "nullif" && len(e.Arguments) == 2 && e.Schema == "" {
+		return &ast.A_Expr{
+			Kind:     ast.A_Expr_Kind_NULLIF,
+			Name:     &ast.List{Items: []ast.Node{&ast.String{Str: "="}}},
+			Lexpr:    c.convertExpr(e.Arguments[0].Expr),
+			Rexpr:    c.convertExpr(e.Arguments[1].Expr),
+			Location: c.loc(e),
+		}
+	}
+
 	// COUNT(*) parses as the argument-less count_star.
 	if name == "count_star" {
 		fc.Funcname.Items = append(fc.Funcname.Items, &ast.String{Str: "count"})
 		fc.AggStar = true
-		return fc
+	} else {
+		fc.Funcname.Items = append(fc.Funcname.Items, &ast.String{Str: name})
 	}
-	fc.Funcname.Items = append(fc.Funcname.Items, &ast.String{Str: name})
 
 	for _, arg := range e.Arguments {
 		if fc.Args == nil {
@@ -622,6 +661,14 @@ func (c *cc) convertOperator(e *dw.OperatorExpression) ast.Node {
 			arr.Elements.Items = append(arr.Elements.Items, c.convertExpr(operand))
 		}
 		return arr
+	case dw.ArrayExtract:
+		// list[i], struct['field'] and list[a:b] bind as the functions
+		// that implement them.
+		return c.call("array_extract", e, e.Operands...)
+	case dw.ArraySlice:
+		return c.call("array_slice", e, e.Operands...)
+	case dw.StructExtract:
+		return c.call("struct_extract", e, e.Operands...)
 	default:
 		return todo(e)
 	}

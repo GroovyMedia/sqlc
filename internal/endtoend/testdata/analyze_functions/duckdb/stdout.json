@@ -1,0 +1,294 @@
+[
+  {
+    "name": "ListAggregates",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "names",
+        "type": {
+          "name": "array",
+          "nullable": true,
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "ids",
+        "type": {
+          "name": "array",
+          "nullable": true,
+          "args": [
+            {
+              "type": {
+                "name": "bigint"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Lists",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "distinct_tags",
+        "type": {
+          "name": "array",
+          "nullable": true,
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "id_list",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "bigint"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "first_int",
+        "type": {
+          "name": "integer"
+        }
+      },
+      {
+        "name": "first_tags",
+        "type": {
+          "name": "array",
+          "nullable": true,
+          "args": [
+            {
+              "type": {
+                "name": "varchar"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "next_ints",
+        "type": {
+          "name": "array",
+          "args": [
+            {
+              "type": {
+                "name": "integer"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "tag_count",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        }
+      },
+      {
+        "name": "has_x",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Json",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "k",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "k_text",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "n_text",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Aggregates",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "total",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "with_n",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "recent",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "sum_n",
+        "type": {
+          "name": "hugeint",
+          "nullable": true
+        }
+      },
+      {
+        "name": "joined",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "ts",
+          "type": {
+            "name": "timestamp with time zone"
+          },
+          "table": "events"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Scalars",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "h",
+        "type": {
+          "name": "ubigint"
+        }
+      },
+      {
+        "name": "nonzero",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "yesterday",
+        "type": {
+          "name": "timestamp with time zone"
+        }
+      },
+      {
+        "name": "half",
+        "type": {
+          "name": "double",
+          "nullable": true
+        }
+      },
+      {
+        "name": "rn",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ParamsFromSiblings",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "events"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "integer"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "integer"
+          }
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "decimal",
+            "args": [
+              {
+                "int": 10
+              },
+              {
+                "int": 2
+              }
+            ]
+          }
+        }
+      },
+      {
+        "number": 4,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "integer"
+          }
+        }
+      }
+    ]
+  }
+]

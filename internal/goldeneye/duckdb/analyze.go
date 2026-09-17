@@ -445,7 +445,10 @@ func (a *analyzer) explain(ctx context.Context, sql string, phs []placeholder) (
 		script := "PREPARE goldeneye AS " + sql + ";\nSET explain_output = 'all';\nEXPLAIN (FORMAT json) EXECUTE goldeneye(" + strings.Join(args, ", ") + ");\n"
 		out, err := a.run(ctx, script, "", true)
 		if err != nil {
-			if !strings.Contains(err.Error(), "Conversion Error") && !strings.Contains(err.Error(), "can't be cast") {
+			// A sentinel the binder cannot convert on the spot, or unnest,
+			// as ANY($1) is bound, is bound to NULL instead.
+			if !strings.Contains(err.Error(), "Conversion Error") && !strings.Contains(err.Error(), "can't be cast") &&
+				!strings.Contains(err.Error(), "UNNEST() can only be applied to lists") {
 				return nil, err
 			}
 			retry := false
@@ -587,7 +590,11 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 			continue
 		}
 		if sc.kind == "insert" {
-			if pos, ok := t.valuesPosition(k); ok {
+			pos, ok := t.valuesPosition(k)
+			if !ok {
+				pos, ok = t.selectPosition(k)
+			}
+			if ok {
 				cols := t.insertColumns()
 				if cols == nil {
 					for _, col := range a.tables[sc.target.name] {
@@ -605,6 +612,10 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 		}
 		if r, ok := t.partner(k); ok {
 			if table, col, ok := a.resolve(sc, r); ok {
+				if r.list {
+					col.spelling += "[]"
+					col.typ = &analysis.TypeExpr{Name: "array", Args: []analysis.TypeArg{{Type: col.typ}}}
+				}
 				c := describe(table, col)
 				b.column, b.spelling, b.typ = &c, col.spelling, col.typ
 				continue

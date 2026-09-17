@@ -71,6 +71,11 @@ const FlagUntypedType = "types.untyped"
 // one of its arguments is, the way ClickHouse's ordinary functions behave.
 const FlagPropagateNullable = "functions.propagate_nullable"
 
+// FlagValueFunctions holds the functions a dialect calls by a bare name,
+// without parentheses, as CURRENT_DATE is: each name and the function it
+// calls, as name:function pairs separated by commas.
+const FlagValueFunctions = "functions.values"
+
 // FlagQualifyDuplicateColumns is set for a dialect that names a result
 // column after its relation when an earlier result column from another
 // relation has the same name, as ClickHouse names the second id of a join
@@ -210,6 +215,21 @@ func (c *Catalog) OuterJoinDefaults() bool {
 	}
 	v, _ := c.DialectFlag(c.dialectOID, FlagOuterJoinDefaults)
 	return v == "true"
+}
+
+// ValueFunction is the function a bare name calls in this dialect, when it
+// names no column: get_current_timestamp for DuckDB's CURRENT_TIMESTAMP.
+func (c *Catalog) ValueFunction(name string) (string, bool) {
+	if c.dialectOID == 0 {
+		return "", false
+	}
+	pairs, _ := c.DialectFlag(c.dialectOID, FlagValueFunctions)
+	for _, pair := range strings.Split(pairs, ",") {
+		if bare, fn, ok := strings.Cut(pair, ":"); ok && bare == strings.ToLower(name) {
+			return fn, true
+		}
+	}
+	return "", false
 }
 
 // DefaultNamespaces lists the namespaces a type is reported from without

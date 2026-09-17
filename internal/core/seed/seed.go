@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"path"
 	"slices"
 	"strconv"
@@ -78,6 +79,11 @@ type Settings struct {
 	// its arguments is, the way ClickHouse's ordinary functions behave,
 	// unless the function is seeded as never null.
 	PropagateNullable bool `json:"propagate_nullable,omitempty"`
+
+	// ValueFunctions names the function a bare word calls when it names no
+	// column, for the SQL value functions a dialect spells without
+	// parentheses: DuckDB's CURRENT_TIMESTAMP calls get_current_timestamp.
+	ValueFunctions map[string]string `json:"value_functions,omitempty"`
 
 	// QualifyDuplicateColumns names a result column after its relation when
 	// an earlier result column from another relation has the same name, as
@@ -656,6 +662,17 @@ func (b *builder) consts() error {
 	}
 	if b.settings.OuterJoinDefaults {
 		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagOuterJoinDefaults, "true"); err != nil {
+			return err
+		}
+	}
+	if len(b.settings.ValueFunctions) > 0 {
+		// In a fixed order, so the catalog comes out the same every time.
+		names := slices.Sorted(maps.Keys(b.settings.ValueFunctions))
+		pairs := make([]string, 0, len(names))
+		for _, name := range names {
+			pairs = append(pairs, strings.ToLower(name)+":"+strings.ToLower(b.settings.ValueFunctions[name]))
+		}
+		if err := b.cat.SetDialectFlag(b.dialectOID, core.FlagValueFunctions, strings.Join(pairs, ",")); err != nil {
 			return err
 		}
 	}

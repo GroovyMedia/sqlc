@@ -140,10 +140,23 @@ func (a *analyzer) bindInsertValues(n ast.Node, rel scopeRel, targets []core.Cla
 		return fmt.Errorf("insert: unsupported source %T", n)
 	}
 	// INSERT ... SELECT inserts whatever the query returns. The rows are not
-	// the statement's result, but the query still holds placeholders.
+	// the statement's result, but the query still holds placeholders, and a
+	// bare one it selects into a column holds that column's type.
 	if sel.ValuesLists == nil {
-		_, err := a.subqueryColumns(sel)
-		return err
+		if _, err := a.subqueryColumns(sel); err != nil {
+			return err
+		}
+		for i, item := range listItems(sel.TargetList) {
+			if i >= len(targets) {
+				break
+			}
+			if rt, ok := item.(*ast.ResTarget); ok {
+				if pr, ok := rt.Val.(*ast.ParamRef); ok {
+					a.inferParam(pr.Number, columnType(rel, targets[i]))
+				}
+			}
+		}
+		return nil
 	}
 	for _, row := range listItems(sel.ValuesLists) {
 		values, ok := row.(*ast.List)

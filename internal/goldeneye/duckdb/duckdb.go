@@ -161,11 +161,13 @@ ORDER BY type_name`, &rows)
 	}
 
 	sort.Strings(order)
-	types := make([]dialect.Type, 0, len(order)+1)
+	types := make([]dialect.Type, 0, len(order)+2)
 	// "any" stands in for the generic parameters of DuckDB's polymorphic
 	// functions (ANY, T, K, V); the analyzer resolves a call returning it
-	// to the type of the call's first argument.
-	types = append(types, dialect.Type{Name: "any", Category: "U"})
+	// to the type of the call's first argument. "lambda" is the parameter
+	// list_transform and its relatives take a lambda in, which no value
+	// has the type of.
+	types = append(types, dialect.Type{Name: "any", Category: "U"}, dialect.Type{Name: "lambda", Category: "U"})
 	for _, name := range order {
 		types = append(types, *grouped[name])
 	}
@@ -205,6 +207,8 @@ func seedTypeName(name string, known map[string]bool) (string, bool) {
 	switch name {
 	case "any", "t", "k", "v":
 		return "any", true
+	case "lambda":
+		return "lambda", true
 	}
 	if !known[name] {
 		return "", false
@@ -218,6 +222,23 @@ func isOperatorName(name string) bool {
 	return strings.IndexFunc(name, func(r rune) bool {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' && r != '$'
 	}) != -1
+}
+
+// neverNull lists the scalar functions whose result is not NULL when an
+// argument is: DuckDB binds them with special NULL handling rather than
+// the default, which returns NULL for any NULL argument.
+var neverNull = map[string]bool{
+	"concat":      true,
+	"concat_ws":   true,
+	"greatest":    true,
+	"hash":        true,
+	"json_object": true,
+	"least":       true,
+	"list_pack":   true,
+	"list_value":  true,
+	"row":         true,
+	"struct_pack": true,
+	"typeof":      true,
 }
 
 func functionKind(functionType string) string {
@@ -305,6 +326,9 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 			// An aggregate over no rows returns NULL — except count,
 			// which returns 0.
 			Nullable: row.FunctionType == "aggregate" && !strings.HasPrefix(row.Name, "count"),
+			// A function's result is NULL when an argument is, except for
+			// the ones that handle NULL themselves.
+			NeverNull: strings.HasPrefix(row.Name, "count") || neverNull[row.Name],
 		}
 		for _, arg := range args {
 			fn.Args = append(fn.Args, dialect.Arg{Type: arg})

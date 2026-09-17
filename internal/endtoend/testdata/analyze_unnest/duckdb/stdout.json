@@ -1,0 +1,174 @@
+[
+  {
+    "name": "UnnestColumns",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "tag",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "UnnestInFrom",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "tag",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "unnest",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "ordinality",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "PruneMissing",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "FilterByAny",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "FilterByUnnested",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "bigint"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "MatchesAnyTag",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      }
+    ]
+  }
+]
