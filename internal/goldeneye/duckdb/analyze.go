@@ -33,10 +33,12 @@ import (
 // so these are read from the query text, the select list's items and the
 // operand beside each parameter resolved against the FROM clause and the
 // catalog, from which a column read from a table takes its declared type
-// and nullability. And whether an expression can be NULL, which DuckDB
-// does not track: the query is run, with each parameter bound to a value
-// of its type, over the fixture and over no rows, and a column is nullable
-// when either run returns a NULL for it.
+// and nullability. And whether a column can be NULL, which DuckDB does
+// not track: the query is run, with each parameter bound to a value of
+// its type, over the fixture and over no rows, and a column is nullable
+// when either run returns a NULL for it — an expression over no rows, or
+// a column read from the outer side of an outer join, whatever it
+// declares.
 
 // placeholder is one parameter of a query as sqlc numbers them: a $n by
 // its number, and each $name, @name, sqlc.arg name or ? in turn at its
@@ -682,7 +684,7 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 	if len(columns) > 0 {
 		nullable := a.observe(ctx, sql, phs, bindings, len(columns))
 		for i := range columns {
-			if columns[i].Table == "" && columns[i].Type != nil && nullable[i] {
+			if columns[i].Type != nil && nullable[i] {
 				columns[i].Type = withNullable(columns[i].Type, true)
 			}
 		}

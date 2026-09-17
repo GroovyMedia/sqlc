@@ -12,6 +12,7 @@
   "untyped": "Nothing",
   "propagate_nullable": true,
   "qualify_duplicate_columns": true,
+  "outer_join_defaults": true,
   "comparison": ["=", "==", "<>", "!=", "<", "<=", ">", ">="],
   "comparison_categories": "NBSDU",
   "arithmetic": ["+", "-", "*", "/", "%"],

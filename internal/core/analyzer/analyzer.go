@@ -50,9 +50,10 @@ type analyzer struct {
 	params  map[int]core.Parameter
 	command core.Command
 
-	// outer is the scope of the query this one is nested in, which a
-	// correlated subquery refers to.
-	outer *scope
+	// outer analyzes the query this one is nested in, whose scope a
+	// correlated subquery refers to. A subquery in FROM sees that scope as
+	// far as it is built, which is what LATERAL lets it read.
+	outer *analyzer
 
 	// ctes are the relations a WITH clause defined, visible to this query and
 	// to the ones nested in it.
@@ -85,7 +86,7 @@ func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
 	sub := &analyzer{
 		cat:    a.cat,
 		params: a.params,
-		outer:  a.scope,
+		outer:  a,
 		ctes:   a.ctes,
 		stars:  a.stars,
 	}
@@ -185,12 +186,6 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 	a.scope = sc
 
 	a.bindAliases(s.TargetList)
-
-	for _, item := range listItems(s.FromClause) {
-		if err := a.typeJoinConditions(item); err != nil {
-			return fmt.Errorf("join: %w", err)
-		}
-	}
 
 	if s.WhereClause != nil {
 		if _, err := a.typeExpr(s.WhereClause); err != nil {
@@ -367,23 +362,4 @@ func listItems(l *ast.List) []ast.Node {
 		return nil
 	}
 	return l.Items
-}
-
-func (a *analyzer) typeJoinConditions(item ast.Node) error {
-	je, ok := item.(*ast.JoinExpr)
-	if !ok {
-		return nil
-	}
-	if err := a.typeJoinConditions(je.Larg); err != nil {
-		return err
-	}
-	if err := a.typeJoinConditions(je.Rarg); err != nil {
-		return err
-	}
-	if je.Quals != nil {
-		if _, err := a.typeExpr(je.Quals); err != nil {
-			return fmt.Errorf("ON: %w", err)
-		}
-	}
-	return nil
 }

@@ -203,9 +203,10 @@ func columnType(rel scopeRel, col core.ClassColumn) exprType {
 	return exprType{
 		typeOID:            col.TypeOID,
 		expr:               col.Type,
-		nullable:           !col.NotNull,
+		nullable:           !col.NotNull || rel.nullable,
 		sourceClassOID:     rel.classOID,
 		sourceAttributeOID: col.AttOID,
 		sourceTableAlias:   rel.alias,
+		columnNotNull:      col.NotNull,
 	}
 }

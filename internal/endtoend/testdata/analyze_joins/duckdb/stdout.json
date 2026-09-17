@@ -1,0 +1,382 @@
+[
+  {
+    "name": "LeftJoin",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "body",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "RightJoin",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "FullJoin",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "InnerJoin",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "LeftJoinChain",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "liker",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "likes"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "RightJoinOverLeft",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "post_id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "liker",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "likes"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "LeftJoinStar",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      },
+      {
+        "name": "age",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        },
+        "table": "users"
+      },
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "user_id",
+        "type": {
+          "name": "bigint",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      },
+      {
+        "name": "body",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "CoalesceJoinColumn",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "body",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "either",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ParamsAgainstJoinColumns",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "title",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "posts"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "title",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "posts"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "title",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "posts"
+        }
+      }
+    ]
+  },
+  {
+    "name": "LateralScope",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "users"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "users"
+      },
+      {
+        "name": "has_post",
+        "type": {
+          "name": "boolean"
+        }
+      }
+    ],
+    "params": []
+  }
+]

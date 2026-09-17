@@ -135,7 +135,7 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 	if rt.Name != nil {
 		star.Alias = *rt.Name
 	}
-	for _, rel := range a.scope.rels {
+	for i, rel := range a.scope.rels {
 		if relName != "" && rel.alias != relName {
 			continue
 		}
@@ -145,14 +145,26 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 			if c.Hidden {
 				continue
 			}
+			// A bare star lists a column two sides of a join merged once,
+			// where the side it is read from lists it. A star qualified by
+			// a relation lists that relation's own copy.
+			m := match{rel: rel, col: c}
+			if relName == "" {
+				if a.scope.hides(i, c.Name) {
+					continue
+				}
+				if j := a.scope.joinedAt(i, c.Name); j >= 0 {
+					m = a.scope.joinedMatch(j)
+				}
+			}
+			t := columnType(m.rel, m.col)
 			col := core.Column{
 				Name:               c.Name,
 				TypeOID:            c.TypeOID,
-				NotNull:            c.NotNull,
+				NotNull:            !t.nullable,
 				SourceClassOID:     rel.classOID,
 				SourceAttributeOID: c.AttOID,
 			}
-			t := exprType{typeOID: c.TypeOID, expr: c.Type, nullable: !c.NotNull}
 			col.DataType, col.IsArray = a.typeNameOf(t)
 			col.Type = a.typeExprOf(t)
 			a.decorateSource(&col, c.AttOID, rel.alias)

@@ -24,6 +24,10 @@ type exprType struct {
 	sourceClassOID     int64
 	sourceAttributeOID int64
 	sourceTableAlias   string
+	// columnNotNull is what a referenced column declares, kept apart from
+	// nullable because a column read from the outer side of an outer join
+	// is nullable whatever it declares.
+	columnNotNull bool
 }
 
 func (a *analyzer) typeExpr(n ast.Node) (exprType, error) {
@@ -216,6 +220,13 @@ func (a *analyzer) inferParam(number int, t exprType) {
 	}
 	typed := cur.TypeOID == 0 && cur.Type == nil && (t.typeOID != 0 || t.expr != nil)
 	if typed {
+		// A placeholder compared with a column holds a value for that
+		// column, so it is nullable when the column is, not when the join
+		// is: an outer join makes the column NULL only for the rows the
+		// comparison cannot match.
+		if t.sourceAttributeOID != 0 {
+			t.nullable = !t.columnNotNull
+		}
 		cur.TypeOID = t.typeOID
 		cur.DataType, cur.IsArray = a.typeNameOf(t)
 		cur.NotNull = !t.nullable
