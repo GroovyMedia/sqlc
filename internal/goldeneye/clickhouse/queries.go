@@ -11,6 +11,7 @@ import (
 type placeholder struct {
 	Number int
 	Name   string // sqlc.arg / sqlc.narg name, empty for ?
+	Count  string // limit or offset for a bare count, which sqlc names after the clause
 }
 
 // Placeholders are substituted with constant expressions that carry their
@@ -37,7 +38,7 @@ func sentinelFor(lastWord string, ordinal int) string {
 func bindPlaceholders(sql string) (string, []placeholder) {
 	var phs []placeholder
 	out := endtoend.Rewrite(sql, func(name, lastWord string) string {
-		phs = append(phs, placeholder{Number: len(phs) + 1, Name: name})
+		phs = append(phs, placeholder{Number: len(phs) + 1, Name: name, Count: endtoend.CountName(lastWord)})
 		return sentinelFor(lastWord, len(phs))
 	})
 	return out, phs

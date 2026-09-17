@@ -67,6 +67,12 @@ func (c *cc) convertQueryNode(q dw.QueryNode) ast.Node {
 		return c.convertSetOperationNode(n)
 	case *dw.RecursiveCTENode:
 		return c.convertRecursiveCTENode(n)
+	case *dw.InsertQueryNode:
+		return c.convertInsertStatement(n.Insert)
+	case *dw.UpdateQueryNode:
+		return c.convertUpdateStatement(n.Update)
+	case *dw.DeleteQueryNode:
+		return c.convertDeleteStatement(n.Delete)
 	default:
 		return c.todo(q)
 	}
@@ -1146,6 +1152,9 @@ func (c *cc) convertOnConflict(n *dw.OnConflictInfo) *ast.OnConflictClause {
 		clause.Action = ast.OnConflictActionUpdate
 	default:
 		clause.Action = ast.OnConflictActionNothing
+	}
+	if n.TargetWhere != nil {
+		clause.Infer = &ast.InferClause{WhereClause: c.convertExpr(n.TargetWhere)}
 	}
 	if n.SetInfo != nil {
 		clause.TargetList = c.convertSetClause(n.SetInfo)

@@ -1,0 +1,5 @@
+CREATE TABLE posts (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    score INTEGER NOT NULL
+);

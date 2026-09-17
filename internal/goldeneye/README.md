@@ -66,8 +66,13 @@ the hand-written files alone, and the checks do not look at them.
 - **`duckdb`** reads the DuckDB CLI named by `DUCKDB`, or the one `install`
   put in the user cache directory, or `duckdb` on `PATH`: `types.jsonl`,
   `functions.jsonl` and `operators.jsonl` come from `duckdb_types()` and
-  `duckdb_functions()`. Three things the catalog does not say are written
-  into the generator: a function's result is NULL when an argument is,
+  `duckdb_functions()`. The catalog lists arithmetic over each numeric
+  type alone, while the binder promotes mixed operands to a common type
+  — `DECIMAL * INTEGER` is a `DECIMAL`, `INTEGER / INTEGER` a `DOUBLE` —
+  so every operator seeded over two numeric types is also measured over
+  every pair of numeric families, with `typeof`, and the pairs the binder
+  accepts join `operators.jsonl`. Three things the catalog does not say are
+  written into the generator: a function's result is NULL when an argument is,
   except for `count` and the functions DuckDB binds with special NULL
   handling — `concat`, `hash`, the constructors and concatenation of
   lists, structs and rows — which `functions.jsonl` marks as never null
@@ -203,7 +208,9 @@ command; `endtoend/` finds them. The engine package loads the case's
 there, prints what the database reports in the JSON shape `sqlc analyze`
 prints, and compares it with the committed `stdout.json` byte for byte. A
 difference means sqlc's analysis disagrees with the database. A case that
-asks for `--ast` is skipped, since only sqlc can print that.
+asks for `--ast` is skipped, since only sqlc can print that. One thing no
+database reports that every checker says: a bare placeholder that is a
+`LIMIT` or `OFFSET` count is named after its clause, as sqlc names it.
 
 - **`clickhouse`** runs each case in an ephemeral `clickhouse local` process.
   Column types come from the executed query's result header, provenance from
@@ -290,11 +297,14 @@ asks for `--ast` is skipped, since only sqlc can print that.
   stands in for that column, the way one in its `VALUES` does; a parameter
   the query casts takes the cast's type as DuckDB spells it, and one
   inside a subquery, whose tables the statement's scope does not name,
-  takes the binder's. And whether
+  takes the binder's; a bare `LIMIT` or `OFFSET` count, which the binder
+  leaves untyped and converts when the statement runs, is an integer, the
+  type the dialect counts rows in. And whether
   an expression can be NULL, which DuckDB does not track: the query is
   run, with each parameter bound to a value of its type, over the fixture
-  and over no rows, and a column is nullable when either run returns a
-  NULL for it. DuckDB spells an enum column by its labels whether the
+  and over no rows, and once more with every `sqlc.narg()` bound to NULL,
+  and a column is nullable when any run returns a NULL for it. DuckDB
+  spells an enum column by its labels whether the
   schema named the type or not, so labels that are those of an enum the
   schema created name that type, and a spelling `types.jsonl` lists as an
   alias — `json`, which DuckDB's own catalog lists as a spelling of

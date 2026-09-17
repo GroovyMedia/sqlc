@@ -18,3 +18,6 @@ SELECT id FROM authors WHERE name = $name OR bio = $name OR id = $id;
 
 -- name: InsertAtSign :exec
 INSERT INTO authors (id, name, bio, royalties) VALUES (@id, @name, sqlc.narg(bio), @royalties);
+
+-- name: NargProjected :many
+SELECT id, sqlc.narg('label')::VARCHAR AS label, coalesce(sqlc.narg('label')::VARCHAR, name) AS shown FROM authors;

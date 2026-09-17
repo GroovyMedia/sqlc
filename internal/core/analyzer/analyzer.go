@@ -7,14 +7,27 @@ import (
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
 )
 
+// Options is what a caller knows about a statement beyond its text.
+type Options struct {
+	// NullableParams are the placeholders the query declared nullable, by
+	// number, as sqlc.narg() declares one: each holds NULL whatever it
+	// stands in for, and so does a cast of it.
+	NullableParams map[int]bool
+}
+
 func Prepare(cat *core.Catalog, stmt ast.Node) (core.PrepareResult, error) {
+	return PrepareWith(cat, stmt, Options{})
+}
+
+func PrepareWith(cat *core.Catalog, stmt ast.Node, opts Options) (core.PrepareResult, error) {
 	if rs, ok := stmt.(*ast.RawStmt); ok {
 		stmt = rs.Stmt
 	}
 	a := &analyzer{
-		cat:    cat,
-		params: map[int]core.Parameter{},
-		stars:  &[]core.StarExpansion{},
+		cat:            cat,
+		params:         map[int]core.Parameter{},
+		stars:          &[]core.StarExpansion{},
+		nullableParams: opts.NullableParams,
 	}
 	if cat.Strict() {
 		a.strict = newStrict()
@@ -87,6 +100,10 @@ type analyzer struct {
 	// and untypedColumns are this query's result columns that have none.
 	strict         *strict
 	untypedColumns []untypedColumn
+
+	// nullableParams are the placeholders the query declared nullable, by
+	// number, shared with the analyzers of the queries nested in it.
+	nullableParams map[int]bool
 }
 
 func (a *analyzer) recordStar(s core.StarExpansion) {
@@ -100,18 +117,49 @@ func (a *analyzer) recordStar(s core.StarExpansion) {
 // placeholder inside the subquery is reported with the rest, and it sees this
 // query's scope, so a correlated reference resolves.
 func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
-	sub := &analyzer{
-		cat:    a.cat,
-		params: a.params,
-		outer:  a,
-		ctes:   a.ctes,
-		stars:  a.stars,
-		strict: a.strict,
-	}
+	sub := a.nested()
 	if err := sub.analyzeSelect(s); err != nil {
 		return nil, err
 	}
 	return sub, nil
+}
+
+// nested is the analyzer of a statement nested in this one, sharing what
+// subquery shares.
+func (a *analyzer) nested() *analyzer {
+	return &analyzer{
+		cat:            a.cat,
+		params:         a.params,
+		outer:          a,
+		ctes:           a.ctes,
+		stars:          a.stars,
+		strict:         a.strict,
+		nullableParams: a.nullableParams,
+	}
+}
+
+// cteBody analyzes what a WITH clause defines a relation as: a SELECT, or
+// an INSERT, UPDATE or DELETE whose RETURNING list is the relation's
+// columns. It reports false for a body it has no analysis for.
+func (a *analyzer) cteBody(n ast.Node) (*analyzer, bool, error) {
+	sub := a.nested()
+	var err error
+	switch s := n.(type) {
+	case *ast.SelectStmt:
+		err = sub.analyzeSelect(s)
+	case *ast.InsertStmt:
+		err = sub.analyzeInsert(s)
+	case *ast.UpdateStmt:
+		err = sub.analyzeUpdate(s)
+	case *ast.DeleteStmt:
+		err = sub.analyzeDelete(s)
+	default:
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return sub, true, nil
 }
 
 func (a *analyzer) subqueryColumns(s *ast.SelectStmt) ([]core.Column, error) {
@@ -278,17 +326,19 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 			}
 		}
 	}
-	for _, n := range []ast.Node{s.LimitCount, s.LimitOffset} {
-		if err := a.typeLimit(n); err != nil {
-			return fmt.Errorf("limit: %w", err)
-		}
+	if err := a.typeLimit(s.LimitCount, "limit"); err != nil {
+		return fmt.Errorf("limit: %w", err)
+	}
+	if err := a.typeLimit(s.LimitOffset, "offset"); err != nil {
+		return fmt.Errorf("offset: %w", err)
 	}
 	return nil
 }
 
 // typeLimit types a LIMIT or OFFSET count. A bare placeholder there holds
-// whatever the dialect counts rows in.
-func (a *analyzer) typeLimit(n ast.Node) error {
+// whatever the dialect counts rows in, and is named after the clause when
+// nothing else names it.
+func (a *analyzer) typeLimit(n ast.Node, name string) error {
 	if n == nil {
 		return nil
 	}
@@ -297,8 +347,13 @@ func (a *analyzer) typeLimit(n ast.Node) error {
 		if err != nil {
 			return err
 		}
-		a.locate(pr)
-		a.inferParam(pr.Number, exprType{typeOID: oid})
+		if err := a.typeOperands(pr, exprType{typeOID: oid}); err != nil {
+			return err
+		}
+		if p := a.params[pr.Number]; p.Name == "" && p.Source == nil {
+			p.Name = name
+			a.params[pr.Number] = p
+		}
 		return nil
 	}
 	_, err := a.typeExpr(n)
@@ -323,7 +378,10 @@ func (a *analyzer) typeValuesLists(l *ast.List) error {
 				return err
 			}
 			if i < len(a.columns) {
-				a.columns[i].NotNull = a.columns[i].NotNull && !t.nullable
+				if t.nullable && a.columns[i].NotNull {
+					a.columns[i].NotNull = false
+					a.columns[i].Type = a.columns[i].Type.WithNullable(true)
+				}
 				continue
 			}
 			col := core.Column{Name: fmt.Sprintf("col%d", i), TypeOID: t.typeOID, NotNull: !t.nullable}
@@ -336,16 +394,28 @@ func (a *analyzer) typeValuesLists(l *ast.List) error {
 }
 
 // analyzeSetOperation types both sides of UNION, INTERSECT or EXCEPT and
-// reports the first branch's columns, the way the databases name the result.
+// reports the first branch's columns, the way the databases name the
+// result. A UNION returns the rows of both branches, so its column is
+// nullable when either branch's is; EXCEPT returns rows of the left branch
+// and INTERSECT rows both branches hold, so theirs is the left's.
 func (a *analyzer) analyzeSetOperation(s *ast.SelectStmt) error {
 	left, err := a.subquery(s.Larg)
 	if err != nil {
 		return err
 	}
-	if _, err := a.subquery(s.Rarg); err != nil {
+	right, err := a.subquery(s.Rarg)
+	if err != nil {
 		return err
 	}
 	a.columns = left.columns
+	if s.Op == ast.Union {
+		for i := range a.columns {
+			if i < len(right.columns) && !right.columns[i].NotNull && a.columns[i].NotNull {
+				a.columns[i].NotNull = false
+				a.columns[i].Type = a.columns[i].Type.WithNullable(true)
+			}
+		}
+	}
 	a.untypedColumns = left.untypedColumns
 	a.scope = left.scope
 	return nil
@@ -362,13 +432,12 @@ func (a *analyzer) bindCTEs(with *ast.WithClause) error {
 		if !ok || cte.Ctename == nil {
 			continue
 		}
-		sel, ok := cte.Ctequery.(*ast.SelectStmt)
-		if !ok {
-			continue
-		}
-		sub, err := a.subquery(sel)
+		sub, ok, err := a.cteBody(cte.Ctequery)
 		if err != nil {
 			return fmt.Errorf("with %s: %w", *cte.Ctename, err)
+		}
+		if !ok {
+			continue
 		}
 		rel := sub.derivedRel(*cte.Ctename)
 		renameColumns(&rel, cte.Aliascolnames)

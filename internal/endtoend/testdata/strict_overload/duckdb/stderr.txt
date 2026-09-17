@@ -1,0 +1,1 @@
+Error: error parsing queries: query.sql:2:36: JsonArrowBare: parameter $1 has no type: "json_extract_string" takes more than one type there; cast it to the type it holds, as in $1::BIGINT; query.sql:5:46: RegexpGroupBare: parameter $1 has no type: "regexp_extract" takes more than one type there; cast it to the type it holds, as in $1::BIGINT

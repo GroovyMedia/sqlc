@@ -50,19 +50,28 @@ func Apply(cat *core.Catalog, n ast.Node) error {
 	case *ast.RenameTableStmt:
 		return applyRenameTable(cat, v)
 	case *ast.ViewStmt:
-		return applyView(cat, v.View, v.Aliases, v.Query, v.Replace)
+		return applyView(cat, v.View, v.Aliases, v.Query, v.Replace, "v")
 	case *ast.CreateTableAsStmt:
 		if v.Into == nil {
 			return nil
 		}
-		return applyView(cat, v.Into.Rel, v.Into.ColNames, v.Query, false)
+		// A materialized view holds only what its query returns.
+		kind := "r"
+		if v.Relkind == ast.ObjectTypeMatview {
+			kind = "v"
+		}
+		return applyView(cat, v.Into.Rel, v.Into.ColNames, v.Query, false, kind)
 	}
 	return nil
 }
 
 // applyView records a view, or a table created from a query, as a relation
-// whose columns are the ones its query selects.
-func applyView(cat *core.Catalog, rel *ast.RangeVar, aliases *ast.List, query ast.Node, replace bool) error {
+// whose columns are the ones its query selects. kind is the relation's
+// class: a view, "v", reads its query's columns again, so a column NOT
+// NULL there is NOT NULL through the view; a table, "r", holds copies the
+// databases create without the constraint, which a later INSERT may leave
+// NULL.
+func applyView(cat *core.Catalog, rel *ast.RangeVar, aliases *ast.List, query ast.Node, replace bool, kind string) error {
 	if rel == nil || rel.Relname == nil {
 		return fmt.Errorf("create view with nil name")
 	}
@@ -93,7 +102,7 @@ func applyView(cat *core.Catalog, rel *ast.RangeVar, aliases *ast.List, query as
 		return fmt.Errorf("view %q: %w", name, err)
 	}
 
-	classOID, err := cat.CreateClass(nsOID, name, "v")
+	classOID, err := cat.CreateClass(nsOID, name, kind)
 	if err != nil {
 		return err
 	}
@@ -115,7 +124,7 @@ func applyView(cat *core.Catalog, rel *ast.RangeVar, aliases *ast.List, query as
 			Name:     colName,
 			TypeOID:  typeOID,
 			Num:      i + 1,
-			NotNull:  col.NotNull,
+			NotNull:  kind == "v" && col.NotNull,
 			DeclType: col.DataType,
 		}); err != nil {
 			return fmt.Errorf("view %s.%s: %w", name, colName, err)

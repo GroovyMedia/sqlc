@@ -1,0 +1,63 @@
+[
+  {
+    "name": "ValuesWithNull",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "col0",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "col1",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ValuesAll",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "col0",
+        "type": {
+          "name": "integer"
+        }
+      },
+      {
+        "name": "col1",
+        "type": {
+          "name": "varchar"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ValuesDerived",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "a",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        }
+      },
+      {
+        "name": "b",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  }
+]

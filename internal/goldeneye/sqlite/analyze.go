@@ -30,16 +30,17 @@ import (
 type placeholder struct {
 	Number int
 	Name   string
+	Count  string // limit or offset for a bare count, which sqlc names after the clause
 }
 
 func bind(sql string) (string, []placeholder) {
 	var phs []placeholder
 	numbers := map[string]int{}
-	out := endtoend.Rewrite(sql, func(name, _ string) string {
+	out := endtoend.Rewrite(sql, func(name, lastWord string) string {
 		n, ok := numbers[name]
 		if name == "" || !ok {
 			n = len(phs) + 1
-			phs = append(phs, placeholder{Number: n, Name: name})
+			phs = append(phs, placeholder{Number: n, Name: name, Count: endtoend.CountName(lastWord)})
 			if name != "" {
 				numbers[name] = n
 			}
@@ -197,6 +198,8 @@ func analyzeQuery(ctx context.Context, binary, schema, fixture string, q endtoen
 		ac := params[i]
 		if ph.Name != "" {
 			ac.Name = ph.Name
+		} else if ac.Name == "" {
+			ac.Name = ph.Count
 		}
 		aq.Params = append(aq.Params, analysis.Param{Number: ph.Number, Column: ac})
 	}

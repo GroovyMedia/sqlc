@@ -65,7 +65,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	var params []Parameter
 	switch raw.Stmt.(type) {
 	case *ast.SelectStmt, *ast.InsertStmt, *ast.UpdateStmt, *ast.DeleteStmt:
-		res, err := coreanalyzer.Prepare(c.coreCatalog, raw)
+		res, err := coreanalyzer.PrepareWith(c.coreCatalog, raw, coreanalyzer.Options{NullableParams: namedParams.Nullable()})
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}

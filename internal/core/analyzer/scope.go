@@ -31,6 +31,10 @@ type scopeRel struct {
 	// nulled names the columns a grouping set leaves out, which are NULL
 	// in the rows of that set, whatever the column declares.
 	nulled map[string]bool
+	// qualifiedOnly marks a relation a bare column name never resolves
+	// to: the row an INSERT proposed is read as excluded.col in ON
+	// CONFLICT DO UPDATE, where a bare name is the target's.
+	qualifiedOnly bool
 	// causes says, by column name, why a column of a derived relation has
 	// no type, for a strict dialect's error.
 	causes map[string]string
@@ -459,6 +463,9 @@ func (s *scope) resolveIn(relation, column string, from, to int) (match, bool, e
 	for i := from; i < to; i++ {
 		r := s.rels[i]
 		if relation != "" && r.alias != relation {
+			continue
+		}
+		if relation == "" && r.qualifiedOnly {
 			continue
 		}
 		for _, c := range r.cols {

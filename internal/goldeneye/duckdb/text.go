@@ -268,6 +268,8 @@ func (t text) readScope() scope {
 		}
 		sc.target, i = t.readTable(i + 1)
 	}
+	// A set operation's columns are its first branch's, as its select
+	// list is, so the tables of the other branches are not in scope.
 	for ; i < len(t); i++ {
 		switch {
 		case t.isOp(i, "("):
@@ -276,6 +278,8 @@ func (t text) readScope() scope {
 			i = t.readTables(i+1, &sc.tables) - 1
 		case t.isWord(i, "using") && !t.isOp(i+1, "("):
 			i = t.readTables(i+1, &sc.tables) - 1
+		case t.isWord(i, "union") || t.isWord(i, "except") || t.isWord(i, "intersect"):
+			i = len(t)
 		}
 	}
 	// A CTE is not a table, whatever table shares its name.
@@ -475,6 +479,18 @@ func (t text) inSubquery(k string) bool {
 		}
 	}
 	return false
+}
+
+// countName is the name sqlc gives parameter k when it is a bare LIMIT or
+// OFFSET count: the clause's, and "" when it is anything else.
+func (t text) countName(k string) string {
+	i := t.find(k)
+	for _, word := range []string{"limit", "offset"} {
+		if t.isWord(i-1, word) {
+			return word
+		}
+	}
+	return ""
 }
 
 // find returns the index of parameter k.

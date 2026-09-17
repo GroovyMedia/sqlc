@@ -23,7 +23,7 @@ FROM runs;
 SELECT id FROM runs
 WHERE list_contains(array_append(retry_reasons, $reason), 'timeout')
   AND split_part(reason, $sep, 1) = 'timeout'
-  AND fdiv(n, $divisor) > 1;
+  AND fdiv(n, $divisor::DOUBLE) > 1;
 
 -- name: AggregateMacros :one
 SELECT json_group_array(reason) AS reasons, geomean(id) AS geo, wavg(n, id) AS weighted FROM runs;

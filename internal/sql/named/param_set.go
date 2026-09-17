@@ -63,6 +63,21 @@ func (p *ParamSet) FetchMerge(idx int, mergeP Param) (param Param, isNamed bool)
 	return mergeParam(param, mergeP), true
 }
 
+// Nullable lists the numbers of the parameters the query declared nullable,
+// as sqlc.narg() declares one: each holds NULL whatever it stands in for.
+func (p *ParamSet) Nullable() map[int]bool {
+	if p == nil {
+		return nil
+	}
+	out := map[int]bool{}
+	for idx, name := range p.positionToName {
+		if name != "" && p.namedParams[name].is(nullable) {
+			out[idx] = true
+		}
+	}
+	return out
+}
+
 // NewParamSet creates a set of parameters with the given list of already used positions
 func NewParamSet(positionsUsed map[int]bool, hasNamedSupport bool) *ParamSet {
 	positionToName := make(map[int]string, len(positionsUsed))

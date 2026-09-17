@@ -148,6 +148,17 @@ func Rewrite(sql string, bind func(name, lastWord string) string) string {
 	return out.String()
 }
 
+// CountName is the name sqlc gives a bare placeholder that is a LIMIT or
+// OFFSET count, by the word before it: the clause's, and "" for any other
+// word.
+func CountName(lastWord string) string {
+	switch strings.ToLower(lastWord) {
+	case "limit", "offset":
+		return strings.ToLower(lastWord)
+	}
+	return ""
+}
+
 // afterReference is the word the reference after one is preceded by: a
 // LIMIT's, so that both counts of LIMIT ?, ? are bound as counts, and
 // otherwise none.
