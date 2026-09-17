@@ -272,6 +272,9 @@ asks for `--ast` is skipped, since only sqlc can print that.
   columns, and the operand beside each parameter, resolved against the
   `FROM` clause and the catalog, `duckdb_columns()`, from which a column
   read from a table takes its declared type and nullability; a parameter
+  quantified by `ANY` or `ALL`, as in `id = ANY($1)`, holds a list of its
+  column's values, and one an `INSERT ... SELECT` selects into a column
+  stands in for that column, the way one in its `VALUES` does; a parameter
   the query casts takes the cast's type as DuckDB spells it, and one
   inside a subquery, whose tables the statement's scope does not name,
   takes the binder's. And whether
