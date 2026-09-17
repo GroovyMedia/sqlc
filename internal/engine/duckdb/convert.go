@@ -608,6 +608,27 @@ func (c *cc) convertFunction(e *dw.FunctionExpression) ast.Node {
 		if name == "->>" && len(e.Arguments) == 2 {
 			return c.call("json_extract_string", e, e.Arguments[0].Expr, e.Arguments[1].Expr)
 		}
+		// x LIKE y ESCAPE z binds as like_escape(x, y, z). With a
+		// constant escape it is the LIKE operator over x and y, so that a
+		// placeholder pattern is typed and named as one without ESCAPE
+		// is; the escape is in the text and nothing else reads it. Any
+		// other escape keeps the call, which the dialect lists.
+		if (name == "like_escape" || name == "ilike_escape") && len(e.Arguments) == 3 {
+			if _, ok := e.Arguments[2].Expr.(*dw.ConstantExpression); ok {
+				op := "~~"
+				if name == "ilike_escape" {
+					op = "~~*"
+				}
+				return &ast.A_Expr{
+					Kind:     ast.A_Expr_Kind_OP,
+					Name:     &ast.List{Items: []ast.Node{&ast.String{Str: op}}},
+					Lexpr:    c.convertExpr(e.Arguments[0].Expr),
+					Rexpr:    c.convertExpr(e.Arguments[1].Expr),
+					Location: c.loc(e),
+				}
+			}
+			return c.call(name, e, e.Arguments[0].Expr, e.Arguments[1].Expr, e.Arguments[2].Expr)
+		}
 		switch len(e.Arguments) {
 		case 1:
 			return &ast.A_Expr{

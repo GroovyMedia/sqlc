@@ -1,0 +1,90 @@
+[
+  {
+    "name": "LikeEscape",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "NotILikeEscape",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "LikeEscapeColumn",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "has_percent",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "matches",
+        "type": {
+          "name": "boolean"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  }
+]
