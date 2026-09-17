@@ -48,13 +48,12 @@ func (p *Parser) Parse(r io.Reader) ([]ast.Statement, error) {
 	var out []ast.Statement
 	for _, stmt := range stmts {
 		converter := &cc{src: string(src)}
-		node := converter.convert(stmt)
-		if _, ok := node.(*ast.TODO); ok {
-			continue
-		}
+		// A statement sqlc has no node for converts to a TODO and stays
+		// in the list: the schema ignores it, and the compiler reports a
+		// named query that is one instead of dropping it.
 		out = append(out, ast.Statement{
 			Raw: &ast.RawStmt{
-				Stmt:         node,
+				Stmt:         converter.convert(stmt),
 				StmtLocation: stmt.Pos(),
 				StmtLen:      stmt.End() - stmt.Pos(),
 			},

@@ -12,6 +12,7 @@ import (
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
 	"github.com/sqlc-dev/sqlc/internal/sql/named"
 	"github.com/sqlc-dev/sqlc/internal/sql/preprocess"
+	"github.com/sqlc-dev/sqlc/internal/sql/sqlerr"
 	"github.com/sqlc-dev/sqlc/internal/sql/validate"
 )
 
@@ -30,6 +31,15 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	}
 	if name == "" {
 		return nil, nil
+	}
+	// A statement sqlc has no node for converts to a TODO. Left alone in
+	// a schema it is harmless, but a named query has to come out the
+	// other end, so one that cannot is an error rather than a silence.
+	if todo, ok := raw.Stmt.(*ast.TODO); ok {
+		return nil, &sqlerr.Error{
+			Message:  fmt.Sprintf("%s: unsupported statement", name),
+			Location: todo.Location,
+		}
 	}
 	if err := validate.Cmd(raw.Stmt, name, cmd); err != nil {
 		return nil, err
