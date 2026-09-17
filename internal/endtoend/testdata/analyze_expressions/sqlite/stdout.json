@@ -182,7 +182,8 @@
       {
         "name": "created",
         "type": {
-          "name": "text"
+          "name": "text",
+          "nullable": true
         },
         "table": "posts"
       }

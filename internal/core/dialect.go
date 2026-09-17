@@ -77,6 +77,11 @@ const FlagPropagateNullable = "functions.propagate_nullable"
 // e.id.
 const FlagQualifyDuplicateColumns = "columns.qualify_duplicates"
 
+// FlagOuterJoinDefaults is set for a dialect whose outer joins fill the
+// columns of the side a row has no match on with the column type's default
+// value rather than NULL, as ClickHouse does unless join_use_nulls is set.
+const FlagOuterJoinDefaults = "joins.outer_defaults"
+
 // FlagDefaultSchema holds the schema the dialect puts an unqualified object
 // in, when that is not the catalog's own default: a type in it is reported
 // without its schema.
@@ -193,6 +198,17 @@ func (c *Catalog) QualifiesDuplicateColumns() bool {
 		return false
 	}
 	v, _ := c.DialectFlag(c.dialectOID, FlagQualifyDuplicateColumns)
+	return v == "true"
+}
+
+// OuterJoinDefaults reports whether an outer join fills the columns of the
+// side a row has no match on with default values rather than NULL, so that
+// the join leaves them as nullable as they declare.
+func (c *Catalog) OuterJoinDefaults() bool {
+	if c.dialectOID == 0 {
+		return false
+	}
+	v, _ := c.DialectFlag(c.dialectOID, FlagOuterJoinDefaults)
 	return v == "true"
 }
 

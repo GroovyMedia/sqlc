@@ -29,7 +29,7 @@ LEFT JOIN LATERAL (
 type LatestPostOrNoneRow struct {
 	ID    int64
 	Name  string
-	Title string
+	Title sql.NullString
 }
 
 func (q *Queries) LatestPostOrNone(ctx context.Context, title string) ([]LatestPostOrNoneRow, error) {

@@ -145,14 +145,14 @@ func (a *analyzer) emitStar(rt *ast.ResTarget, fields []string) {
 			if c.Hidden {
 				continue
 			}
+			t := columnType(rel, c)
 			col := core.Column{
 				Name:               c.Name,
 				TypeOID:            c.TypeOID,
-				NotNull:            c.NotNull,
+				NotNull:            !t.nullable,
 				SourceClassOID:     rel.classOID,
 				SourceAttributeOID: c.AttOID,
 			}
-			t := exprType{typeOID: c.TypeOID, expr: c.Type, nullable: !c.NotNull}
 			col.DataType, col.IsArray = a.typeNameOf(t)
 			col.Type = a.typeExprOf(t)
 			a.decorateSource(&col, c.AttOID, rel.alias)

@@ -17,6 +17,10 @@ type scopeRel struct {
 	// cols is the catalog's column list, held as-is rather than copied into a
 	// scope-local column type.
 	cols []core.ClassColumn
+	// nullable marks the outer side of an outer join: a row the other side
+	// has no match for holds NULL in every column of this relation, whatever
+	// the column declares.
+	nullable bool
 }
 
 func (a *analyzer) buildScope(from *ast.List) (*scope, error) {
@@ -53,10 +57,7 @@ func (a *analyzer) appendFromItem(sc *scope, item ast.Node) error {
 		sc.rels = append(sc.rels, rel)
 		return nil
 	case *ast.JoinExpr:
-		if err := a.appendFromItem(sc, v.Larg); err != nil {
-			return err
-		}
-		return a.appendFromItem(sc, v.Rarg)
+		return a.appendJoin(sc, v)
 	case *ast.RangeFunction:
 		rel, err := a.bindRangeFunction(v)
 		if err != nil {
@@ -81,6 +82,54 @@ func (a *analyzer) appendFromItem(sc *scope, item ast.Node) error {
 		return nil
 	default:
 		return fmt.Errorf("scope: unsupported FROM item %T", item)
+	}
+}
+
+// appendJoin binds both sides of a join, then applies what the join does to
+// them: an outer join makes its outer side nullable.
+func (a *analyzer) appendJoin(sc *scope, je *ast.JoinExpr) error {
+	from := len(sc.rels)
+	if err := a.appendFromItem(sc, je.Larg); err != nil {
+		return err
+	}
+	mid := len(sc.rels)
+	if err := a.appendFromItem(sc, je.Rarg); err != nil {
+		return err
+	}
+	to := len(sc.rels)
+
+	// The condition is typed as part of binding the join, against both
+	// sides as they are before the join: a placeholder in it is typed by
+	// the column beside it, whichever statement the join is in.
+	if je.Quals != nil {
+		if _, err := a.typeExpr(je.Quals); err != nil {
+			return fmt.Errorf("join: ON: %w", err)
+		}
+	}
+
+	// An outer join keeps the rows one side has no match for, with NULL in
+	// every column of the other side, unless the dialect fills that side
+	// with defaults instead, as ClickHouse does unless join_use_nulls is
+	// set.
+	outerFrom, outerTo := 0, 0
+	switch je.Jointype {
+	case ast.JoinTypeLeft:
+		outerFrom, outerTo = mid, to
+	case ast.JoinTypeRight:
+		outerFrom, outerTo = from, mid
+	case ast.JoinTypeFull:
+		outerFrom, outerTo = from, to
+	}
+	if outerFrom < outerTo && !a.cat.OuterJoinDefaults() {
+		sc.markNullable(outerFrom, outerTo)
+	}
+	return nil
+}
+
+// markNullable makes the relations in [from, to) nullable.
+func (s *scope) markNullable(from, to int) {
+	for i := from; i < to; i++ {
+		s.rels[i].nullable = true
 	}
 }
 

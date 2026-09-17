@@ -187,12 +187,6 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 
 	a.bindAliases(s.TargetList)
 
-	for _, item := range listItems(s.FromClause) {
-		if err := a.typeJoinConditions(item); err != nil {
-			return fmt.Errorf("join: %w", err)
-		}
-	}
-
 	if s.WhereClause != nil {
 		if _, err := a.typeExpr(s.WhereClause); err != nil {
 			return fmt.Errorf("where: %w", err)
@@ -368,23 +362,4 @@ func listItems(l *ast.List) []ast.Node {
 		return nil
 	}
 	return l.Items
-}
-
-func (a *analyzer) typeJoinConditions(item ast.Node) error {
-	je, ok := item.(*ast.JoinExpr)
-	if !ok {
-		return nil
-	}
-	if err := a.typeJoinConditions(je.Larg); err != nil {
-		return err
-	}
-	if err := a.typeJoinConditions(je.Rarg); err != nil {
-		return err
-	}
-	if je.Quals != nil {
-		if _, err := a.typeExpr(je.Quals); err != nil {
-			return fmt.Errorf("ON: %w", err)
-		}
-	}
-	return nil
 }
