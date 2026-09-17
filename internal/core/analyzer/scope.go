@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/sqlc-dev/sqlc/internal/core"
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
@@ -9,6 +10,9 @@ import (
 
 type scope struct {
 	rels []scopeRel
+	// joined are the columns a USING clause or a NATURAL JOIN merged, each
+	// standing in for the copies the two sides of its join hold.
+	joined []joinedColumn
 }
 
 type scopeRel struct {
@@ -21,6 +25,31 @@ type scopeRel struct {
 	// has no match for holds NULL in every column of this relation, whatever
 	// the column declares.
 	nullable bool
+}
+
+// joinedColumn is a column both sides of a join have under one name and a
+// USING clause or NATURAL merged into one. An unqualified reference to the
+// name resolves to it rather than being ambiguous, and a star lists it once,
+// where the side it is read from lists it.
+type joinedColumn struct {
+	name string
+	// from and to bound the relations the join covers, as indexes into rels.
+	from, to int
+	// rel is the relation the merged column is read from — the left side's,
+	// or the right side's in a RIGHT JOIN — and col is that copy, with
+	// NotNull saying whether the merged column can be NULL.
+	rel int
+	col core.ClassColumn
+	// dup is the relation whose copy the merged column hides.
+	dup int
+}
+
+// match is a column a scope resolved: the relation it is read from, as an
+// index into rels and as the relation itself, and the column.
+type match struct {
+	idx int
+	rel scopeRel
+	col core.ClassColumn
 }
 
 func (a *analyzer) buildScope(from *ast.List) (*scope, error) {
@@ -86,7 +115,8 @@ func (a *analyzer) appendFromItem(sc *scope, item ast.Node) error {
 }
 
 // appendJoin binds both sides of a join, then applies what the join does to
-// them: an outer join makes its outer side nullable.
+// them: an outer join makes its outer side nullable, and a USING clause or
+// NATURAL merges the columns the sides share.
 func (a *analyzer) appendJoin(sc *scope, je *ast.JoinExpr) error {
 	from := len(sc.rels)
 	if err := a.appendFromItem(sc, je.Larg); err != nil {
@@ -106,6 +136,10 @@ func (a *analyzer) appendJoin(sc *scope, je *ast.JoinExpr) error {
 			return fmt.Errorf("join: ON: %w", err)
 		}
 	}
+	joined, err := sc.mergeColumns(je, from, mid, to)
+	if err != nil {
+		return fmt.Errorf("join: %w", err)
+	}
 
 	// An outer join keeps the rows one side has no match for, with NULL in
 	// every column of the other side, unless the dialect fills that side
@@ -123,14 +157,121 @@ func (a *analyzer) appendJoin(sc *scope, je *ast.JoinExpr) error {
 	if outerFrom < outerTo && !a.cat.OuterJoinDefaults() {
 		sc.markNullable(outerFrom, outerTo)
 	}
+	// The merged columns were typed before the mark, so a FULL JOIN's own
+	// mark does not reach them: its merged column is NULL only when both
+	// copies are.
+	sc.joined = append(sc.joined, joined...)
 	return nil
 }
 
-// markNullable makes the relations in [from, to) nullable.
+// markNullable makes the relations in [from, to), and the columns merged
+// among them, nullable.
 func (s *scope) markNullable(from, to int) {
 	for i := from; i < to; i++ {
 		s.rels[i].nullable = true
 	}
+	for j := range s.joined {
+		if from <= s.joined[j].from && s.joined[j].to <= to {
+			s.joined[j].col.NotNull = false
+		}
+	}
+}
+
+// mergeColumns resolves the columns a USING clause names, or the ones both
+// sides of a NATURAL JOIN have, on each side of the join. A merged column is
+// read from the side an outer join keeps whole, and is nullable when that
+// copy is; a FULL JOIN's is NULL only when both copies are.
+func (s *scope) mergeColumns(je *ast.JoinExpr, from, mid, to int) ([]joinedColumn, error) {
+	var names []string
+	switch {
+	case je.UsingClause != nil:
+		for _, item := range listItems(je.UsingClause) {
+			if str, ok := item.(*ast.String); ok {
+				names = append(names, str.Str)
+			}
+		}
+	case je.IsNatural:
+		names = s.commonColumns(from, mid, to)
+	}
+	out := make([]joinedColumn, 0, len(names))
+	for _, name := range names {
+		left, ok, err := s.resolveIn("", name, from, mid)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("column %q specified in USING clause does not exist in left table", name)
+		}
+		right, ok, err := s.resolveIn("", name, mid, to)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("column %q specified in USING clause does not exist in right table", name)
+		}
+		src, other := left, right
+		if je.Jointype == ast.JoinTypeRight {
+			src, other = right, left
+		}
+		nullable := columnType(src.rel, src.col).nullable
+		if je.Jointype == ast.JoinTypeFull {
+			nullable = nullable || columnType(other.rel, other.col).nullable
+		}
+		col := src.col
+		col.NotNull = !nullable
+		out = append(out, joinedColumn{name: name, from: from, to: to, rel: src.idx, col: col, dup: other.idx})
+	}
+	return out, nil
+}
+
+// commonColumns lists the names the left side of a join offers, in its
+// order, that the right side offers too.
+func (s *scope) commonColumns(from, mid, to int) []string {
+	var names []string
+	for i := from; i < mid; i++ {
+		for _, c := range s.rels[i].cols {
+			if c.Hidden || s.hides(i, c.Name) || slices.Contains(names, c.Name) {
+				continue
+			}
+			if _, ok, _ := s.resolveIn("", c.Name, mid, to); ok {
+				names = append(names, c.Name)
+			}
+		}
+	}
+	return names
+}
+
+// joinedAt is the outermost merged column named name that covers relation
+// i, or -1. A join registers its merged columns after the joins nested in
+// it, so the last one found is the outermost.
+func (s *scope) joinedAt(i int, name string) int {
+	for j := len(s.joined) - 1; j >= 0; j-- {
+		jc := &s.joined[j]
+		if jc.name == name && jc.from <= i && i < jc.to {
+			return j
+		}
+	}
+	return -1
+}
+
+// hides reports whether relation i's column named name is a copy a merged
+// column stands in for.
+func (s *scope) hides(i int, name string) bool {
+	for _, jc := range s.joined {
+		if jc.name == name && jc.dup == i {
+			return true
+		}
+	}
+	return false
+}
+
+// joinedMatch is a merged column as a resolution: read from its relation,
+// with its own nullability standing in for the relation's.
+func (s *scope) joinedMatch(j int) match {
+	jc := s.joined[j]
+	rel := s.rels[jc.rel]
+	rel.nullable = false
+	return match{idx: jc.rel, rel: rel, col: jc.col}
 }
 
 // bindRangeFunction binds a function called in FROM. A set-returning function
@@ -270,8 +411,23 @@ func (s *scope) resolveColumn(relation, column string) (rel scopeRel, col core.C
 	if s == nil {
 		return rel, col, false, nil
 	}
-	found := 0
-	for _, r := range s.rels {
+	m, ok, err := s.resolveIn(relation, column, 0, len(s.rels))
+	if err != nil || !ok {
+		return scopeRel{}, core.ClassColumn{}, false, err
+	}
+	return m.rel, m.col, true, nil
+}
+
+// resolveIn finds the single column named column among the relations in
+// [from, to), optionally qualified by relation. The copies a join merged
+// count as the one merged column, so an unqualified name both sides of a
+// USING clause have is not ambiguous.
+func (s *scope) resolveIn(relation, column string, from, to int) (match, bool, error) {
+	var found match
+	count := 0
+	seen := -1
+	for i := from; i < to; i++ {
+		r := s.rels[i]
 		if relation != "" && r.alias != relation {
 			continue
 		}
@@ -279,15 +435,22 @@ func (s *scope) resolveColumn(relation, column string) (rel scopeRel, col core.C
 			if c.Name != column {
 				continue
 			}
-			found++
-			if found > 1 {
-				return scopeRel{}, core.ClassColumn{}, false, fmt.Errorf("ambiguous column reference %q", column)
+			m := match{idx: i, rel: r, col: c}
+			if relation == "" {
+				if j := s.joinedAt(i, column); j >= 0 {
+					if j == seen {
+						continue
+					}
+					seen = j
+					m = s.joinedMatch(j)
+				}
 			}
-			rel, col = r, c
+			count++
+			if count > 1 {
+				return match{}, false, fmt.Errorf("ambiguous column reference %q", column)
+			}
+			found = m
 		}
 	}
-	if found == 0 {
-		return scopeRel{}, core.ClassColumn{}, false, nil
-	}
-	return rel, col, true, nil
+	return found, count == 1, nil
 }
