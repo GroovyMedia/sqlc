@@ -728,6 +728,43 @@ func (q *Queries) ListClassColumns(ctx context.Context, classOid int64) ([]ListC
 	return items, nil
 }
 
+const listEnumsInNamespace = `-- name: ListEnumsInNamespace :many
+SELECT oid, name FROM sql_type
+WHERE namespace_oid = ? AND typtype = 'e' AND family_oid IS NULL
+ORDER BY oid
+`
+
+type ListEnumsInNamespaceRow struct {
+	Oid  int64
+	Name string
+}
+
+// The enums a schema declared in a namespace, in declaration order. An
+// enum is a family whose arguments are its labels, so the instance rows
+// built on one (an array of it) are not listed.
+func (q *Queries) ListEnumsInNamespace(ctx context.Context, namespaceOid int64) ([]ListEnumsInNamespaceRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEnumsInNamespace, namespaceOid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEnumsInNamespaceRow
+	for rows.Next() {
+		var i ListEnumsInNamespaceRow
+		if err := rows.Scan(&i.Oid, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNamespaces = `-- name: ListNamespaces :many
 SELECT oid, name FROM sql_namespace ORDER BY oid
 `

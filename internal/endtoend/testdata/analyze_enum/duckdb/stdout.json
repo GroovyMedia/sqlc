@@ -1,0 +1,302 @@
+[
+  {
+    "name": "GetPerson",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "people"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "people"
+      },
+      {
+        "name": "current_mood",
+        "type": {
+          "name": "mood"
+        },
+        "table": "people"
+      },
+      {
+        "name": "last_mood",
+        "type": {
+          "name": "mood",
+          "nullable": true
+        },
+        "table": "people"
+      },
+      {
+        "name": "lvl",
+        "type": {
+          "name": "hr.level",
+          "nullable": true
+        },
+        "table": "people"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ListByMood",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "people"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "people"
+      },
+      {
+        "name": "current_mood",
+        "type": {
+          "name": "mood"
+        },
+        "table": "people"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "current_mood",
+          "type": {
+            "name": "mood"
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ListHappy",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "people"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "people"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ListByLevel",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "people"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "people"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "lvl",
+          "type": {
+            "name": "hr.level",
+            "nullable": true
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "CreatePerson",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "current_mood",
+          "type": {
+            "name": "mood"
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 4,
+        "column": {
+          "name": "last_mood",
+          "type": {
+            "name": "mood",
+            "nullable": true
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 5,
+        "column": {
+          "name": "lvl",
+          "type": {
+            "name": "hr.level",
+            "nullable": true
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "CreateHappyPerson",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "name",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "SetLastMood",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "table": "people"
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "last_mood",
+          "type": {
+            "name": "mood",
+            "nullable": true
+          },
+          "table": "people"
+        }
+      }
+    ]
+  },
+  {
+    "name": "CastMood",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "m",
+        "type": {
+          "name": "mood"
+        }
+      },
+      {
+        "name": "l",
+        "type": {
+          "name": "hr.level"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "mood"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "hr.level"
+          }
+        }
+      }
+    ]
+  }
+]

@@ -254,6 +254,39 @@ func (c *Catalog) TypeOIDsInCategory(category string) ([]int64, error) {
 	return oids, nil
 }
 
+// EnumInfo is an enum a schema declared: its name and its labels in the
+// order the declaration listed them.
+type EnumInfo struct {
+	OID    int64
+	Name   string
+	Labels []string
+}
+
+// EnumsInNamespace lists the enums a schema declared in a namespace, in
+// declaration order, each with its labels.
+func (c *Catalog) EnumsInNamespace(namespaceOID int64) ([]EnumInfo, error) {
+	ctx := context.Background()
+	rows, err := c.q.ListEnumsInNamespace(ctx, namespaceOID)
+	if err != nil {
+		return nil, fmt.Errorf("list enums in namespace %d: %w", namespaceOID, err)
+	}
+	out := make([]EnumInfo, 0, len(rows))
+	for _, r := range rows {
+		args, err := c.q.TypeArgs(ctx, r.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("enum %q: labels: %w", r.Name, err)
+		}
+		e := EnumInfo{OID: r.Oid, Name: r.Name, Labels: make([]string, 0, len(args))}
+		for _, a := range args {
+			if a.StringValue.Valid {
+				e.Labels = append(e.Labels, a.StringValue.String)
+			}
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
 // TypeOID returns the family a name refers to: an alias spelling resolves to
 // the type it names.
 func (c *Catalog) TypeOID(name string) (int64, error) {
