@@ -1051,8 +1051,8 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 }
 
 // typeFuncClauses types the clauses a call carries besides its arguments:
-// FILTER, an aggregate's ORDER BY, and a window's PARTITION BY and ORDER
-// BY, each of which may hold a placeholder.
+// FILTER, an aggregate's ORDER BY, and a window's PARTITION BY, ORDER BY
+// and frame bounds, each of which may hold a placeholder.
 func (a *analyzer) typeFuncClauses(f *ast.FuncCall) error {
 	if f.AggFilter != nil {
 		if _, err := a.typeExpr(f.AggFilter); err != nil {
@@ -1070,6 +1070,24 @@ func (a *analyzer) typeFuncClauses(f *ast.FuncCall) error {
 		}
 		if err := a.typeSortClause(f.Over.OrderClause); err != nil {
 			return err
+		}
+		for _, off := range []ast.Node{f.Over.StartOffset, f.Over.EndOffset} {
+			if off == nil {
+				continue
+			}
+			// A ROWS or GROUPS bound counts rows, as LIMIT does. A RANGE
+			// bound is a value in the ORDER BY column's domain, or an
+			// interval over a date or time, which a bare placeholder
+			// cannot say.
+			if f.Over.FrameOptions&ast.FrameOptionRange == 0 {
+				if err := a.typeLimit(off); err != nil {
+					return fmt.Errorf("frame: %w", err)
+				}
+				continue
+			}
+			if _, err := a.typeExpr(off); err != nil {
+				return fmt.Errorf("frame: %w", err)
+			}
 		}
 	}
 	return nil

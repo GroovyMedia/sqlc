@@ -917,7 +917,43 @@ func (c *cc) convertWindow(e *dw.WindowExpression) ast.Node {
 	if len(e.Orders) > 0 {
 		fc.Over.OrderClause = c.convertOrderBys(e.Orders)
 	}
+	fc.Over.FrameOptions = frameOptions(e)
+	if e.StartExpr != nil {
+		fc.Over.StartOffset = c.convertExpr(e.StartExpr)
+	}
+	if e.EndExpr != nil {
+		fc.Over.EndOffset = c.convertExpr(e.EndExpr)
+	}
 	return fc
+}
+
+// frameOptions maps a window's frame to the flags ast.WindowDef carries.
+// The analysis reads the frame's mode and whether each bound is an
+// expression; a default frame reports 0.
+func frameOptions(e *dw.WindowExpression) int {
+	opts := 0
+	if m := frameMode(e.FrameStart) | frameMode(e.FrameEnd); m != 0 {
+		opts |= ast.FrameOptionNonDefault | m
+	}
+	if e.StartExpr != nil {
+		opts |= ast.FrameOptionNonDefault | ast.FrameOptionStartOffset
+	}
+	if e.EndExpr != nil {
+		opts |= ast.FrameOptionNonDefault | ast.FrameOptionEndOffset
+	}
+	return opts
+}
+
+func frameMode(b dw.WindowBoundary) int {
+	switch b {
+	case dw.WindowCurrentRowRows, dw.WindowExprPrecedingRows, dw.WindowExprFollowingRows:
+		return ast.FrameOptionRows
+	case dw.WindowCurrentRowRange, dw.WindowExprPrecedingRange, dw.WindowExprFollowingRange:
+		return ast.FrameOptionRange
+	case dw.WindowCurrentRowGroups, dw.WindowExprPrecedingGroups, dw.WindowExprFollowingGroups:
+		return ast.FrameOptionGroups
+	}
+	return 0
 }
 
 // convertTypeExpression maps an unbound DuckDB type to a sqlc type name and
