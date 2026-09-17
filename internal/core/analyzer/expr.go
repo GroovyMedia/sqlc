@@ -1033,17 +1033,22 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		}
 		return unknown, nil
 	}
-	p := a.pickOverload(overloads, argOIDs)
+	p, ambiguous := a.pickOverload(overloads, argOIDs)
 	generic := a.polymorphicBinding(p, argTypes)
 	// An argument that is a bare placeholder takes the parameter's type: its
 	// own, or the generic type the other arguments bound, at the
-	// parameter's list depth.
+	// parameter's list depth. One the overloads disagree on is left
+	// untyped, for the query to cast.
 	for i, arg := range args {
 		if i >= len(p.ArgTypes) {
 			break
 		}
 		pr, ok := arg.(*ast.ParamRef)
 		if !ok {
+			continue
+		}
+		if ambiguous[i] {
+			a.noteCause(pr, exprType{untyped: fmt.Sprintf("%q takes more than one type there", name)})
 			continue
 		}
 		dims, polymorphic := a.polymorphicDims(p.ArgTypes[i])
@@ -1324,9 +1329,14 @@ func isPolymorphic(typeName string) bool {
 // match best: an exact type match on a parameter beats a match on the
 // argument's family, which beats a polymorphic parameter, which beats a
 // parameter the argument casts to implicitly, which beats one it does not,
-// and any overload of the right arity beats one of the wrong arity.
-func (a *analyzer) pickOverload(overloads []core.ProcOverload, argTypes []int64) core.ProcOverload {
-	best := -1
+// and any overload of the right arity beats one of the wrong arity. A bare
+// placeholder says nothing, so among the overloads that fit equally it
+// prefers one taking a value over one taking a list, as DuckDB binds a
+// value; when the overloads left still disagree on what a placeholder
+// holds, its position is reported ambiguous, since the seed's order says
+// nothing about it.
+func (a *analyzer) pickOverload(overloads []core.ProcOverload, argTypes []int64) (core.ProcOverload, map[int]bool) {
+	var tied []int
 	bestScore := 0
 	chains := make([][]int64, len(argTypes))
 	for j, oid := range argTypes {
@@ -1368,14 +1378,45 @@ func (a *analyzer) pickOverload(overloads []core.ProcOverload, argTypes []int64)
 				}
 			}
 		}
-		if best < 0 || score > bestScore {
-			best, bestScore = i, score
+		switch {
+		case len(tied) == 0 || score > bestScore:
+			tied, bestScore = []int{i}, score
+		case score == bestScore:
+			tied = append(tied, i)
 		}
 	}
-	if best >= 0 {
-		return overloads[best]
+	if len(tied) == 0 {
+		return overloads[0], nil
 	}
-	return overloads[0]
+	var ambiguous map[int]bool
+	for j, oid := range argTypes {
+		if oid != 0 || len(tied) < 2 {
+			continue
+		}
+		dims := -1
+		for _, i := range tied {
+			if d := a.listDims(overloads[i].ArgTypes[j]); dims < 0 || d < dims {
+				dims = d
+			}
+		}
+		kept := tied[:0]
+		for _, i := range tied {
+			if a.listDims(overloads[i].ArgTypes[j]) == dims {
+				kept = append(kept, i)
+			}
+		}
+		tied = kept
+		for _, i := range tied[1:] {
+			if overloads[i].ArgTypes[j] != overloads[tied[0]].ArgTypes[j] {
+				if ambiguous == nil {
+					ambiguous = map[int]bool{}
+				}
+				ambiguous[j] = true
+				break
+			}
+		}
+	}
+	return overloads[tied[0]], ambiguous
 }
 
 func funcCallName(f *ast.FuncCall) string {
