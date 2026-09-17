@@ -27,7 +27,8 @@ import (
 // text as a string.
 
 // duckdbList scans a LIST into a Go slice, each element the way a column of
-// its type scans. NULL scans as a nil slice.
+// its type scans: a NULL element is an error unless the element type can
+// hold nil. NULL scans as a nil slice.
 func duckdbList[T any](dst *[]T) sql.Scanner {
 	return duckdbListScanner[T]{dst}
 }
@@ -155,7 +156,8 @@ func (s duckdbDecimalScanner[T]) Scan(src any) error {
 }
 
 // duckdbScanValue scans one value into dst: through its Scan method when
-// it has one, and through database/sql's own conversion otherwise.
+// it has one, and through database/sql's own conversion otherwise. NULL
+// lands only in a type that can hold nil, as database/sql has it.
 func duckdbScanValue[T any](dst *T, src any) error {
 	switch d := any(dst).(type) {
 	case *json.RawMessage:
@@ -166,6 +168,13 @@ func duckdbScanValue[T any](dst *T, src any) error {
 	var n sql.Null[T]
 	if err := n.Scan(src); err != nil {
 		return err
+	}
+	if !n.Valid {
+		switch reflect.TypeOf(dst).Elem().Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+		default:
+			return fmt.Errorf("converting NULL to %T is unsupported", *dst)
+		}
 	}
 	*dst = n.V
 	return nil
