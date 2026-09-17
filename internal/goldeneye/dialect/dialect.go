@@ -60,13 +60,16 @@ type Cast struct {
 }
 
 // Function is a function the dialect ships with. Kind is 'f'unction,
-// 'a'ggregate, 'w'indow or 'p'rocedure.
+// 'a'ggregate, 'w'indow or 'p'rocedure. NeverNull marks a result that is
+// never NULL even when an argument is, in a dialect that propagates
+// nullability.
 type Function struct {
-	Name     string `json:"name"`
-	Kind     string `json:"kind,omitempty"`
-	Args     []Arg  `json:"args,omitempty"`
-	Returns  string `json:"returns"`
-	Nullable bool   `json:"nullable,omitempty"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind,omitempty"`
+	Args      []Arg  `json:"args,omitempty"`
+	Returns   string `json:"returns"`
+	Nullable  bool   `json:"nullable,omitempty"`
+	NeverNull bool   `json:"never_null,omitempty"`
 }
 
 // Arg is one of a function's parameters. Mode is 'i'n, 'o'ut, 'b'oth,

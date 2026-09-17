@@ -66,7 +66,14 @@ the hand-written files alone, and the checks do not look at them.
 - **`duckdb`** reads the DuckDB CLI named by `DUCKDB`, or the one `install`
   put in the user cache directory, or `duckdb` on `PATH`: `types.jsonl`,
   `functions.jsonl` and `operators.jsonl` come from `duckdb_types()` and
-  `duckdb_functions()`. The CLI has to be a DuckDB 2.0 build, the release
+  `duckdb_functions()`. Two things the catalog does not say are written
+  into the generator: a function's result is NULL when an argument is,
+  except for `count` and the functions DuckDB binds with special NULL
+  handling — `greatest` and `least`, `concat`, `hash`, the constructors
+  of lists, structs and rows — which `functions.jsonl` marks as never
+  null; and a `LAMBDA` parameter, which no value has the type of, is
+  seeded as a type of its own, so that `list_transform` and its
+  relatives are listed. The CLI has to be a DuckDB 2.0 build, the release
   darkwing is pinned against, which has no release to download yet: until
   2.0 is out, `install` downloads the current build of DuckDB's v2.0
   preview channel, `duckdb.DefaultVersion`, a rolling tarball per platform

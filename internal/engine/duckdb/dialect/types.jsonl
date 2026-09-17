@@ -1,4 +1,5 @@
 {"name":"any","category":"U"}
+{"name":"lambda","category":"U"}
 {"name":"array","category":"C"}
 {"name":"bigint","category":"N","aliases":["int64","int8","long","oid"]}
 {"name":"bignum","category":"U","aliases":["varint"]}
