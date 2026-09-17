@@ -162,13 +162,15 @@ type analyzer struct {
 	tables  map[string][]column
 	enums   map[string][]string // the labels of each enum type the schema created
 	// canonical names the type the dialect reports a spelling as, for
-	// each alias types.jsonl lists: DuckDB spells a JSON column json,
-	// which its own catalog lists as a spelling of varchar.
+	// each alias types.jsonl lists, except the ones dialect.json keeps as
+	// types of their own: DuckDB's catalog lists json as a spelling of
+	// varchar, and the dialect reports a JSON column as json all the same.
 	canonical map[string]string
 }
 
 // readAliases reads the aliases the generated types.jsonl gives each
-// type, keyed by alias.
+// type, keyed by alias, leaving out the ones dialect.json names as types
+// of their own.
 func readAliases() (map[string]string, error) {
 	dir, err := dialect.Dir(Engine)
 	if err != nil {
@@ -178,9 +180,20 @@ func readAliases() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	settings, err := dialect.ReadSettings(dir)
+	if err != nil {
+		return nil, err
+	}
+	own := map[string]bool{}
+	for _, alias := range settings.BaseAliases {
+		own[strings.ToLower(alias)] = true
+	}
 	canonical := map[string]string{}
 	for _, t := range types {
 		for _, alias := range t.Aliases {
+			if own[strings.ToLower(alias)] {
+				continue
+			}
 			canonical[strings.ToLower(alias)] = strings.ToLower(t.Name)
 		}
 	}
