@@ -9,3 +9,4 @@ sql:
         out: "go"
         sql_package: "database/sql"
         emit_pointers_for_null_types: true
+        build_tags: "cgo"
