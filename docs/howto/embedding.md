@@ -59,3 +59,19 @@ type ScoreAndTestsRow struct {
 	TestScore TestScore
 }
 ```
+## Outer joins
+
+An embedded table must not be on the outer side of a `LEFT`, `RIGHT` or
+`FULL JOIN`. A row with no match is `NULL` in every column of that table,
+and the model's `NOT NULL` fields cannot hold it: the first such row fails
+to scan.
+
+```sql
+-- name: StudentsWithScores :many
+SELECT sqlc.embed(students), sqlc.embed(test_scores)
+FROM students
+LEFT JOIN test_scores ON test_scores.student_id = students.id;
+```
+
+Here `students` is fine, but `sqlc.embed(test_scores)` is refused. Select
+the columns you need instead; sqlc types each one as nullable.

@@ -5,7 +5,9 @@ import (
 
 	"github.com/sqlc-dev/sqlc/internal/core"
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
+	"github.com/sqlc-dev/sqlc/internal/sql/catalog"
 	"github.com/sqlc-dev/sqlc/internal/sql/preprocess"
+	"github.com/sqlc-dev/sqlc/internal/sql/sqlerr"
 )
 
 // embedCore folds the columns each sqlc.embed(table) expanded to into the
@@ -58,17 +60,49 @@ func (c *Compiler) embedCore(raw *ast.RawStmt, res core.PrepareResult, embeds pr
 		// no class behind it, a CTE or a subquery, has no model, and
 		// neither has one the catalog codegen reads does not list.
 		table, ok := starTable(res.Columns[next : next+width])
+		var model catalog.Table
 		if ok {
-			_, err := c.catalog.GetTable(table)
+			var err error
+			model, err = c.catalog.GetTable(table)
 			ok = err == nil
 		}
 		if !ok {
 			return nil, fmt.Errorf("unable to resolve table with %q", embed.Orig())
 		}
+		// The model's fields are typed after the schema, so a NOT NULL
+		// column the query can still leave NULL has no field to hold it:
+		// every column of a row with no match is NULL, and the first such
+		// row fails to scan.
+		if outerSide(res.Columns[next:next+width], model) {
+			return nil, &sqlerr.Error{
+				Message:  fmt.Sprintf("%s is on the outer side of an outer join: a row with no match is NULL in every column, which the model's NOT NULL fields cannot hold; select the columns instead", embed.Orig()),
+				Location: embed.Location,
+			}
+		}
 		out = append(out, &Column{Name: table.Name, EmbedTable: table})
 		next += width
 	}
 	return append(out, cols[next:]...), nil
+}
+
+// outerSide reports whether a star's columns come from the outer side of
+// an outer join: one of them can be NULL although the table declares it
+// NOT NULL.
+func outerSide(cols []core.Column, table catalog.Table) bool {
+	for _, col := range cols {
+		if col.NotNull || col.Source == nil {
+			continue
+		}
+		for _, tc := range table.Columns {
+			if tc.Name == col.Source.Column {
+				if tc.IsNotNull {
+					return true
+				}
+				break
+			}
+		}
+	}
+	return false
 }
 
 // starTable is the table every column of a star came from.
