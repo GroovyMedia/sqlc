@@ -1,0 +1,48 @@
+[
+  {
+    "name": "GetFirst",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "val",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "second_table"
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        },
+        "table": "second_table"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "GetCopied",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "val",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "second_table"
+      },
+      {
+        "name": "n",
+        "type": {
+          "name": "integer",
+          "nullable": true
+        },
+        "table": "second_table"
+      }
+    ],
+    "params": []
+  }
+]

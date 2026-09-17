@@ -1,0 +1,5 @@
+CREATE TABLE foo (val TEXT NOT NULL, n INTEGER NOT NULL);
+
+CREATE TABLE second_table AS SELECT * FROM foo;
+
+CREATE VIEW foo_view AS SELECT val, n FROM foo;
