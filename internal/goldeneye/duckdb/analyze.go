@@ -691,7 +691,7 @@ func (a *analyzer) analyzeQuery(ctx context.Context, q endtoend.Query) (analysis
 	var columns []analysis.Column
 	switch sc.kind {
 	case "select":
-		rows, err := a.query(ctx, "DESCRIBE "+a.substitute(sql, phs, bindings, false))
+		rows, err := a.query(ctx, "DESCRIBE "+a.substitute(sql, phs, bindings, false, nil))
 		if err != nil {
 			return analysis.Query{}, err
 		}
@@ -810,15 +810,16 @@ func (a *analyzer) aliased(sc scope, qualifier string) (string, bool) {
 
 // substitute replaces each parameter with a NULL of its type, or with a
 // value of its type when values is set, for DuckDB to describe or run the
-// query. A parameter of unknown type becomes a bare NULL. Strings,
-// quoted identifiers and comments are left alone.
-func (a *analyzer) substitute(sql string, phs []placeholder, bindings map[int]*binding, values bool) string {
+// query; nulls names the parameters that stay NULL either way. A
+// parameter of unknown type becomes a bare NULL. Strings, quoted
+// identifiers and comments are left alone.
+func (a *analyzer) substitute(sql string, phs []placeholder, bindings map[int]*binding, values bool, nulls map[int]bool) string {
 	repl := map[int]string{}
 	for _, ph := range phs {
 		r := "NULL"
 		if b := bindings[ph.Number]; b != nil && b.spelling != "" {
 			r = "CAST(NULL AS " + b.spelling + ")"
-			if values {
+			if values && !nulls[ph.Number] {
 				// The value is chosen by the type as spelled, since an
 				// alias such as JSON takes values its canonical type
 				// does not.
@@ -879,24 +880,37 @@ func (a *analyzer) substitute(sql string, phs []placeholder, bindings map[int]*b
 // nothing.
 func (a *analyzer) observe(ctx context.Context, sql string, phs []placeholder, bindings map[int]*binding, n int) []bool {
 	nullable := make([]bool, n)
-	statement := a.substitute(sql, phs, bindings, true) + ";\n"
+	// A parameter the query declared nullable, as sqlc.narg() does, is
+	// bound to NULL as well, since it may be.
+	statements := []string{a.substitute(sql, phs, bindings, true, nil) + ";\n"}
+	nulls := map[int]bool{}
+	for _, ph := range phs {
+		if ph.Nullable {
+			nulls[ph.Number] = true
+		}
+	}
+	if len(nulls) > 0 {
+		statements = append(statements, a.substitute(sql, phs, bindings, true, nulls)+";\n")
+	}
 	runs := []bool{true}
 	if a.fixture != "" {
 		runs = append(runs, false)
 	}
-	for _, withFixture := range runs {
-		out, err := a.run(ctx, statement, "csv", withFixture)
-		if err != nil {
-			continue
-		}
-		records, err := csv.NewReader(strings.NewReader(out)).ReadAll()
-		if err != nil {
-			continue
-		}
-		for _, rec := range records[min(1, len(records)):] {
-			for j, v := range rec {
-				if j < n && v == nullMarker {
-					nullable[j] = true
+	for _, statement := range statements {
+		for _, withFixture := range runs {
+			out, err := a.run(ctx, statement, "csv", withFixture)
+			if err != nil {
+				continue
+			}
+			records, err := csv.NewReader(strings.NewReader(out)).ReadAll()
+			if err != nil {
+				continue
+			}
+			for _, rec := range records[min(1, len(records)):] {
+				for j, v := range rec {
+					if j < n && v == nullMarker {
+						nullable[j] = true
+					}
 				}
 			}
 		}

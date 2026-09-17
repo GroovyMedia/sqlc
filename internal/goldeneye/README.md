@@ -289,8 +289,9 @@ database reports that every checker says: a bare placeholder that is a
   type the dialect counts rows in. And whether
   an expression can be NULL, which DuckDB does not track: the query is
   run, with each parameter bound to a value of its type, over the fixture
-  and over no rows, and a column is nullable when either run returns a
-  NULL for it. DuckDB spells an enum column by its labels whether the
+  and over no rows, and once more with every `sqlc.narg()` bound to NULL,
+  and a column is nullable when any run returns a NULL for it. DuckDB
+  spells an enum column by its labels whether the
   schema named the type or not, so labels that are those of an enum the
   schema created name that type, and a spelling `types.jsonl` lists as an
   alias — `json`, which DuckDB's own catalog lists as a spelling of

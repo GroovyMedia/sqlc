@@ -273,7 +273,7 @@ func (a *analyzer) typeParamRef(p *ast.ParamRef) (exprType, error) {
 		cur = core.Parameter{Number: p.Number, Name: p.Name}
 		a.params[p.Number] = cur
 	}
-	return exprType{typeOID: cur.TypeOID, expr: cur.Type.WithNullable(false), nullable: !cur.NotNull}, nil
+	return exprType{typeOID: cur.TypeOID, expr: cur.Type.WithNullable(false), nullable: !cur.NotNull || a.nullableParams[p.Number]}, nil
 }
 
 func (a *analyzer) inferParam(number int, t exprType) {
@@ -295,7 +295,7 @@ func (a *analyzer) inferParam(number int, t exprType) {
 		}
 		cur.TypeOID = t.typeOID
 		cur.DataType, cur.IsArray = a.typeNameOf(t)
-		cur.NotNull = !t.nullable
+		cur.NotNull = !t.nullable && !a.nullableParams[number]
 		cur.Type = a.typeExprOf(t)
 	}
 	if cur.Source == nil && t.sourceAttributeOID != 0 {
@@ -1399,11 +1399,13 @@ func (a *analyzer) typeTypeCast(c *ast.TypeCast) (exprType, error) {
 	t := a.lookupType(target)
 	// A cast is how a query says what an otherwise untyped placeholder
 	// holds, and a placeholder so typed is not null unless the type says
-	// otherwise, as ClickHouse's Nullable(String) does. Anything else
-	// cast is NULL when it was NULL before, or when the type says so.
+	// otherwise, as ClickHouse's Nullable(String) does, or the query
+	// declared the placeholder nullable. Anything else cast is NULL when
+	// it was NULL before, or when the type says so.
 	t.nullable = target.Nullable
 	if pr, ok := c.Arg.(*ast.ParamRef); ok {
 		a.markCast(pr)
+		t.nullable = t.nullable || a.nullableParams[pr.Number]
 		if err := a.typeOperands(pr, t); err != nil {
 			return exprType{}, err
 		}

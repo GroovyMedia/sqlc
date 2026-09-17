@@ -7,14 +7,27 @@ import (
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
 )
 
+// Options is what a caller knows about a statement beyond its text.
+type Options struct {
+	// NullableParams are the placeholders the query declared nullable, by
+	// number, as sqlc.narg() declares one: each holds NULL whatever it
+	// stands in for, and so does a cast of it.
+	NullableParams map[int]bool
+}
+
 func Prepare(cat *core.Catalog, stmt ast.Node) (core.PrepareResult, error) {
+	return PrepareWith(cat, stmt, Options{})
+}
+
+func PrepareWith(cat *core.Catalog, stmt ast.Node, opts Options) (core.PrepareResult, error) {
 	if rs, ok := stmt.(*ast.RawStmt); ok {
 		stmt = rs.Stmt
 	}
 	a := &analyzer{
-		cat:    cat,
-		params: map[int]core.Parameter{},
-		stars:  &[]core.StarExpansion{},
+		cat:            cat,
+		params:         map[int]core.Parameter{},
+		stars:          &[]core.StarExpansion{},
+		nullableParams: opts.NullableParams,
 	}
 	if cat.Strict() {
 		a.strict = newStrict()
@@ -82,6 +95,10 @@ type analyzer struct {
 	// and untypedColumns are this query's result columns that have none.
 	strict         *strict
 	untypedColumns []untypedColumn
+
+	// nullableParams are the placeholders the query declared nullable, by
+	// number, shared with the analyzers of the queries nested in it.
+	nullableParams map[int]bool
 }
 
 func (a *analyzer) recordStar(s core.StarExpansion) {
@@ -106,12 +123,13 @@ func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
 // subquery shares.
 func (a *analyzer) nested() *analyzer {
 	return &analyzer{
-		cat:    a.cat,
-		params: a.params,
-		outer:  a,
-		ctes:   a.ctes,
-		stars:  a.stars,
-		strict: a.strict,
+		cat:            a.cat,
+		params:         a.params,
+		outer:          a,
+		ctes:           a.ctes,
+		stars:          a.stars,
+		strict:         a.strict,
+		nullableParams: a.nullableParams,
 	}
 }
 

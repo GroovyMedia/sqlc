@@ -280,5 +280,43 @@
         }
       }
     ]
+  },
+  {
+    "name": "NargProjected",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "label",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "shown",
+        "type": {
+          "name": "varchar"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "label",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          }
+        }
+      }
+    ]
   }
 ]

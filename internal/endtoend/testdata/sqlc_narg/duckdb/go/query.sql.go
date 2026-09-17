@@ -63,6 +63,70 @@ func (q *Queries) IdentOnNullable(ctx context.Context, maybeBar *string) ([]*str
 	return items, nil
 }
 
+const projected = `-- name: Projected :many
+SELECT bar, $1::TEXT AS label FROM foo;
+`
+
+type ProjectedRow struct {
+	Bar   string
+	Label *string
+}
+
+func (q *Queries) Projected(ctx context.Context, label *string) ([]ProjectedRow, error) {
+	rows, err := q.db.QueryContext(ctx, projected, label)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectedRow
+	for rows.Next() {
+		var i ProjectedRow
+		if err := rows.Scan(&i.Bar, &i.Label); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const projectedInExpr = `-- name: ProjectedInExpr :many
+SELECT bar, ($1::TEXT || bar) AS labelled FROM foo;
+`
+
+type ProjectedInExprRow struct {
+	Bar      string
+	Labelled *string
+}
+
+func (q *Queries) ProjectedInExpr(ctx context.Context, label *string) ([]ProjectedInExprRow, error) {
+	rows, err := q.db.QueryContext(ctx, projectedInExpr, label)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectedInExprRow
+	for rows.Next() {
+		var i ProjectedInExprRow
+		if err := rows.Scan(&i.Bar, &i.Labelled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const stringOnNonNullable = `-- name: StringOnNonNullable :many
 SELECT bar FROM foo WHERE bar = $1;
 `
