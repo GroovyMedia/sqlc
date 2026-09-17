@@ -417,6 +417,12 @@ func (c *cc) convertJoinRef(t *dw.JoinRef) ast.Node {
 	if t.RefType == dw.JoinRefNatural {
 		join.IsNatural = true
 	}
+	// A POSITIONAL JOIN pairs rows by position and pads the shorter side
+	// with NULLs. Which side is shorter is not known here, so both are
+	// nullable, as in a FULL JOIN.
+	if t.RefType == dw.JoinRefPositional {
+		join.Jointype = ast.JoinTypeFull
+	}
 	if t.Condition != nil {
 		join.Quals = c.convertExpr(t.Condition)
 	}
