@@ -76,3 +76,17 @@ func (c *Catalog) TablesInNamespace(namespaceOID int64) ([]ClassInfo, error) {
 	}
 	return out, nil
 }
+
+// RelationsInNamespace lists the tables and views of a namespace, in the
+// order they were created.
+func (c *Catalog) RelationsInNamespace(namespaceOID int64) ([]ClassInfo, error) {
+	rows, err := c.q.ListRelationsInNamespace(context.Background(), namespaceOID)
+	if err != nil {
+		return nil, fmt.Errorf("list relations in namespace %d: %w", namespaceOID, err)
+	}
+	out := make([]ClassInfo, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ClassInfo{OID: r.Oid, Name: r.Name})
+	}
+	return out, nil
+}

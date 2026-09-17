@@ -32,3 +32,7 @@ SELECT sqlc.embed(bu) FROM baz.users AS bu;
 -- name: WithCrossSchema :many
 SELECT sqlc.embed(u), sqlc.embed(bu) FROM users AS u
 INNER JOIN baz.users bu ON u.id = bu.id;
+
+-- name: WithView :many
+SELECT sqlc.embed(adults), p.id AS post_id FROM adults
+LEFT JOIN posts AS p ON p.user_id = adults.id;

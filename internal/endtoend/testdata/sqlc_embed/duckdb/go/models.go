@@ -8,6 +8,12 @@ import (
 	"database/sql"
 )
 
+type Adult struct {
+	ID   int32
+	Name string
+	Age  sql.NullInt32
+}
+
 type BazUser struct {
 	ID   int32
 	Name string

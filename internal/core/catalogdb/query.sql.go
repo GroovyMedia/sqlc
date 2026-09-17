@@ -792,6 +792,40 @@ func (q *Queries) ListNamespaces(ctx context.Context) ([]SqlNamespace, error) {
 	return items, nil
 }
 
+const listRelationsInNamespace = `-- name: ListRelationsInNamespace :many
+SELECT oid, name FROM sql_class
+WHERE namespace_oid = ? AND kind IN ('r', 'v')
+ORDER BY oid
+`
+
+type ListRelationsInNamespaceRow struct {
+	Oid  int64
+	Name string
+}
+
+func (q *Queries) ListRelationsInNamespace(ctx context.Context, namespaceOid int64) ([]ListRelationsInNamespaceRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRelationsInNamespace, namespaceOid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRelationsInNamespaceRow
+	for rows.Next() {
+		var i ListRelationsInNamespaceRow
+		if err := rows.Scan(&i.Oid, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTablesInNamespace = `-- name: ListTablesInNamespace :many
 SELECT oid, name FROM sql_class
 WHERE namespace_oid = ? AND kind = 'r'

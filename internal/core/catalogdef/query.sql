@@ -151,6 +151,11 @@ SELECT oid, name FROM sql_class
 WHERE namespace_oid = ? AND kind = 'r'
 ORDER BY oid;
 
+-- name: ListRelationsInNamespace :many
+SELECT oid, name FROM sql_class
+WHERE namespace_oid = ? AND kind IN ('r', 'v')
+ORDER BY oid;
+
 -- name: DeleteClass :exec
 DELETE FROM sql_class WHERE oid = ?;
 

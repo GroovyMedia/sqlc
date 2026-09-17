@@ -257,3 +257,41 @@ func (q *Queries) WithSubquery(ctx context.Context) ([]WithSubqueryRow, error) {
 	}
 	return items, nil
 }
+
+const withView = `-- name: WithView :many
+SELECT adults.id, adults.name, adults.age, p.id AS post_id FROM adults
+LEFT JOIN posts AS p ON p.user_id = adults.id;
+`
+
+type WithViewRow struct {
+	Adult  Adult
+	PostID sql.NullInt32
+}
+
+func (q *Queries) WithView(ctx context.Context) ([]WithViewRow, error) {
+	rows, err := q.db.QueryContext(ctx, withView)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WithViewRow
+	for rows.Next() {
+		var i WithViewRow
+		if err := rows.Scan(
+			&i.Adult.ID,
+			&i.Adult.Name,
+			&i.Adult.Age,
+			&i.PostID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -11,10 +11,10 @@ import (
 
 // coreResultCatalog dumps the core catalog into the legacy catalog shape a
 // Result carries, so codegen sees the same table models either way a query
-// set was analyzed. Relations and the enums a schema declared make the
-// trip: codegen reads tables and their columns to build models, and enums
-// to build a type per enum, and none of the other types, functions or
-// operators the core catalog also holds.
+// set was analyzed. Relations, views included, and the enums a schema
+// declared make the trip: codegen reads tables and their columns to build
+// models, and enums to build a type per enum, and none of the other types,
+// functions or operators the core catalog also holds.
 func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 	cat := catalog.New("public")
 	namespaces, err := c.Namespaces()
@@ -35,7 +35,7 @@ func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 			schemas[ns.Name] = schema
 			cat.Schemas = append(cat.Schemas, schema)
 		}
-		tables, err := c.TablesInNamespace(ns.OID)
+		tables, err := c.RelationsInNamespace(ns.OID)
 		if err != nil {
 			return nil, err
 		}
