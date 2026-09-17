@@ -353,13 +353,7 @@ func (a *analyzer) typeAExpr(e *ast.A_Expr) (exprType, error) {
 	// Engines that do not have a dedicated boolean node report AND and OR as
 	// operators. They combine predicates whatever the dialect.
 	if opName == "AND" || opName == "OR" {
-		if _, err := a.typeExpr(e.Lexpr); err != nil {
-			return exprType{}, err
-		}
-		if _, err := a.typeExpr(e.Rexpr); err != nil {
-			return exprType{}, err
-		}
-		return a.boolType(false)
+		return a.typePredicate([]ast.Node{e.Lexpr, e.Rexpr})
 	}
 
 	leftT, err := a.typeExpr(e.Lexpr)
@@ -432,50 +426,58 @@ func isNullTest(opName string) bool {
 }
 
 // typeQuantifiedExpr types "x = ANY($1)" and "x > ALL(...)": the right side
-// holds values of the left side's type, and the result is a predicate.
+// holds values of the left side's type, and the result is a predicate,
+// NULL when x is or when the values may hold a NULL.
 func (a *analyzer) typeQuantifiedExpr(e *ast.A_Expr) (exprType, error) {
 	leftT, err := a.typeExpr(e.Lexpr)
 	if err != nil {
 		return exprType{}, err
 	}
-	if err := a.typeOperands(e.Rexpr, leftT); err != nil {
+	rightT, err := a.typeOperand(e.Rexpr, leftT)
+	if err != nil {
 		return exprType{}, err
 	}
-	return a.boolType(false)
+	return a.boolType(leftT.nullable || rightT.nullable)
 }
 
 // typePredicateList types IN and BETWEEN, where the right side is a list of
-// values compared against the left.
+// values compared against the left. The result is NULL when the left side
+// is, or when a value it is compared against may be.
 func (a *analyzer) typePredicateList(e *ast.A_Expr) (exprType, error) {
 	leftT, err := a.typeExpr(e.Lexpr)
 	if err != nil {
 		return exprType{}, err
 	}
+	nullable := leftT.nullable
+	items := []ast.Node{e.Rexpr}
 	if l, ok := e.Rexpr.(*ast.List); ok {
-		for _, item := range listItems(l) {
-			if err := a.typeOperands(item, leftT); err != nil {
-				return exprType{}, err
-			}
+		items = listItems(l)
+	}
+	for _, item := range items {
+		t, err := a.typeOperand(item, leftT)
+		if err != nil {
+			return exprType{}, err
 		}
-		return a.boolType(false)
+		nullable = nullable || t.nullable
 	}
-	if err := a.typeOperands(e.Rexpr, leftT); err != nil {
-		return exprType{}, err
-	}
-	return a.boolType(false)
+	return a.boolType(nullable)
 }
 
 // typeIn types the IN node the engines that have one report, where the values
-// compared against are held apart from the expression.
+// compared against are held apart from the expression. The result is NULL
+// when the expression is, or when a value it is compared against may be.
 func (a *analyzer) typeIn(e *ast.In) (exprType, error) {
 	leftT, err := a.typeExpr(e.Expr)
 	if err != nil {
 		return exprType{}, err
 	}
+	nullable := leftT.nullable
 	for _, item := range e.List {
-		if err := a.typeOperands(item, leftT); err != nil {
+		t, err := a.typeOperand(item, leftT)
+		if err != nil {
 			return exprType{}, err
 		}
+		nullable = nullable || t.nullable
 	}
 	// "x IN (SELECT ...)" compares x against the subquery's column, and the
 	// subquery's own placeholders are reported with the rest.
@@ -485,27 +487,36 @@ func (a *analyzer) typeIn(e *ast.In) (exprType, error) {
 		if err != nil {
 			return exprType{}, err
 		}
+		if len(cols) > 0 {
+			nullable = nullable || !cols[0].NotNull
+		}
 		if pr, ok := e.Expr.(*ast.ParamRef); ok && len(cols) > 0 {
-			if err := a.typeOperands(pr, columnExprType(cols[0])); err != nil {
+			t, err := a.typeOperand(pr, columnExprType(cols[0]))
+			if err != nil {
 				return exprType{}, err
 			}
+			nullable = nullable || t.nullable
 		}
 	}
-	return a.boolType(false)
+	return a.boolType(nullable)
 }
 
-// typeBetween types the BETWEEN node the engines that have one report.
+// typeBetween types the BETWEEN node the engines that have one report. The
+// result is NULL when the expression or a bound is.
 func (a *analyzer) typeBetween(e *ast.BetweenExpr) (exprType, error) {
 	leftT, err := a.typeExpr(e.Expr)
 	if err != nil {
 		return exprType{}, err
 	}
+	nullable := leftT.nullable
 	for _, bound := range []ast.Node{e.Left, e.Right} {
-		if err := a.typeOperands(bound, leftT); err != nil {
+		t, err := a.typeOperand(bound, leftT)
+		if err != nil {
 			return exprType{}, err
 		}
+		nullable = nullable || t.nullable
 	}
-	return a.boolType(false)
+	return a.boolType(nullable)
 }
 
 // typeCase types CASE. Its result is the first branch's, and it is nullable
@@ -715,7 +726,7 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 	// "$1 = ANY(SELECT ...)" compares the placeholder against the
 	// subquery's column, and holds a value of its type.
 	if pr, ok := e.Testexpr.(*ast.ParamRef); ok && len(cols) > 0 {
-		if err := a.typeOperands(pr, exprType{typeOID: cols[0].TypeOID, expr: cols[0].Type.WithNullable(false)}); err != nil {
+		if testT, err = a.typeOperand(pr, exprType{typeOID: cols[0].TypeOID, expr: cols[0].Type.WithNullable(false)}); err != nil {
 			return exprType{}, err
 		}
 	}
@@ -731,8 +742,12 @@ func (a *analyzer) typeSubLink(e *ast.SubLink) (exprType, error) {
 			t.untyped = sub.untypedColumns[0].cause
 		}
 		return t, nil
-	default:
+	case ast.EXISTS_SUBLINK:
 		return a.boolType(false)
+	default:
+		// "x = ANY(SELECT ...)" is NULL when x is, or when no row matches
+		// and the column holds a NULL.
+		return a.boolType(testT.nullable || (len(cols) > 0 && !cols[0].NotNull))
 	}
 }
 
@@ -805,20 +820,27 @@ func (a *analyzer) typeNullIf(e *ast.A_Expr) (exprType, error) {
 // typeOperands types a node standing opposite one of known type, giving a bare
 // placeholder that type.
 func (a *analyzer) typeOperands(n ast.Node, other exprType) error {
+	_, err := a.typeOperand(n, other)
+	return err
+}
+
+// typeOperand is typeOperands reporting the node's own type: a
+// placeholder's is what it was given, nullable as the column it stands in
+// for is.
+func (a *analyzer) typeOperand(n ast.Node, other exprType) (exprType, error) {
 	if pr, ok := n.(*ast.ParamRef); ok {
 		// Registering the placeholder first keeps the name its syntax gave
 		// it, as ClickHouse's {name:Type} does.
 		if _, err := a.typeParamRef(pr); err != nil {
-			return err
+			return exprType{}, err
 		}
 		if other.typeOID != 0 || other.expr != nil {
 			a.inferParam(pr.Number, other)
 		}
 		a.noteCause(pr, other)
-		return nil
+		return a.typeParamRef(pr)
 	}
-	_, err := a.typeExpr(n)
-	return err
+	return a.typeExpr(n)
 }
 
 // normalizeOperator upper-cases a word operator ("like", "is not") so that the
@@ -938,13 +960,25 @@ func (a *analyzer) operandScore(chain []int64, typeOID int64) (int, bool) {
 	return 0, ok
 }
 
+// typeBoolExpr types NOT, AND and OR, which are NULL when an operand is:
+// NOT NULL is NULL, TRUE AND NULL is NULL, FALSE OR NULL is NULL. NOT
+// EXISTS and NOT (x IS NULL) stay NOT NULL, since their operands are.
 func (a *analyzer) typeBoolExpr(b *ast.BoolExpr) (exprType, error) {
-	for _, item := range listItems(b.Args) {
-		if _, err := a.typeExpr(item); err != nil {
+	return a.typePredicate(listItems(b.Args))
+}
+
+// typePredicate types the operands of a boolean combination and reports a
+// predicate that is NULL when any of them may be.
+func (a *analyzer) typePredicate(operands []ast.Node) (exprType, error) {
+	nullable := false
+	for _, n := range operands {
+		t, err := a.typeExpr(n)
+		if err != nil {
 			return exprType{}, err
 		}
+		nullable = nullable || t.nullable
 	}
-	return a.boolType(false)
+	return a.boolType(nullable)
 }
 
 func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {

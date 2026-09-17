@@ -1,0 +1,156 @@
+[
+  {
+    "name": "BooleanCombinations",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "inactive",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "both_",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "either",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "not_active",
+        "type": {
+          "name": "boolean"
+        }
+      },
+      {
+        "name": "not_cmp",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "is_last",
+        "type": {
+          "name": "boolean"
+        }
+      },
+      {
+        "name": "has_bio",
+        "type": {
+          "name": "boolean"
+        }
+      },
+      {
+        "name": "anonymous",
+        "type": {
+          "name": "boolean"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Membership",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "in_list",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "in_null_item",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "in_scores",
+        "type": {
+          "name": "boolean"
+        }
+      },
+      {
+        "name": "in_lengths",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "in_sub",
+        "type": {
+          "name": "boolean"
+        }
+      },
+      {
+        "name": "any_list",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "above_all",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Ranges",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "integer"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "born_in_range",
+        "type": {
+          "name": "boolean",
+          "nullable": true
+        }
+      },
+      {
+        "name": "score_in_range",
+        "type": {
+          "name": "boolean"
+        }
+      }
+    ],
+    "params": []
+  }
+]
