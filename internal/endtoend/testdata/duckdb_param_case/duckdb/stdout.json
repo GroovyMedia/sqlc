@@ -1,0 +1,52 @@
+[
+  {
+    "name": "AtSignSpellings",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "foobar",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "DollarNameSpellings",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "authors"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "foobar",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  }
+]

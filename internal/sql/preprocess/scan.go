@@ -39,7 +39,7 @@ func (l *lexer) scan(start, end int) []occurrence {
 				kind:  kindArg,
 				start: i,
 				end:   j,
-				name:  l.src[i+1 : j],
+				name:  l.paramName(i+1, j),
 				ident: l.src[i:j],
 			})
 			i = j
@@ -51,7 +51,7 @@ func (l *lexer) scan(start, end int) []occurrence {
 				kind:  kindArg,
 				start: i,
 				end:   j,
-				name:  l.src[i+1 : j],
+				name:  l.paramName(i+1, j),
 				ident: l.src[i:j],
 			})
 			i = j
@@ -90,6 +90,17 @@ func (l *lexer) scan(start, end int) []occurrence {
 		}
 	}
 	return out
+}
+
+// paramName is the parameter name a bare @name or $name reference gives,
+// folded the way the dialect folds an unquoted identifier, so that two
+// spellings of one name are one parameter, as they are for sqlc.arg(name).
+func (l *lexer) paramName(start, end int) string {
+	name := l.src[start:end]
+	if l.d.FoldIdentifier {
+		name = strings.ToLower(name)
+	}
+	return name
 }
 
 // sqlcCall parses a "sqlc.<name>(<arg>)" call that starts at start, where
