@@ -25,14 +25,33 @@ func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error 
 }
 
 const getThing = `-- name: GetThing :one
-SELECT id, li, ls FROM things WHERE id = $1;
+SELECT id, li, ls, ld FROM things WHERE id = $1;
 `
 
 func (q *Queries) GetThing(ctx context.Context, id int32) (Thing, error) {
 	row := q.db.QueryRowContext(ctx, getThing, id)
 	var i Thing
-	err := row.Scan(&i.ID, duckdbList(&i.Li), duckdbList(&i.Ls))
+	err := row.Scan(
+		&i.ID,
+		duckdbList(&i.Li),
+		duckdbList(&i.Ls),
+		duckdbList(&i.Ld),
+	)
 	return i, err
+}
+
+const setPrices = `-- name: SetPrices :exec
+UPDATE things SET ld = $1 WHERE id = $2;
+`
+
+type SetPricesParams struct {
+	Ld []string
+	ID int32
+}
+
+func (q *Queries) SetPrices(ctx context.Context, arg SetPricesParams) error {
+	_, err := q.db.ExecContext(ctx, setPrices, duckdbListParam(arg.Ld), arg.ID)
+	return err
 }
 
 const thingPartIDs = `-- name: ThingPartIDs :many
@@ -72,4 +91,15 @@ func (q *Queries) ThingPartIDs(ctx context.Context) ([]ThingPartIDsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const thingPrices = `-- name: ThingPrices :one
+SELECT ld FROM things WHERE id = $1;
+`
+
+func (q *Queries) ThingPrices(ctx context.Context, id int32) ([]string, error) {
+	row := q.db.QueryRowContext(ctx, thingPrices, id)
+	var ld []string
+	err := row.Scan(duckdbList(&ld))
+	return ld, err
 }

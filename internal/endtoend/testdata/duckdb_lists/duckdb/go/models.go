@@ -14,4 +14,5 @@ type Thing struct {
 	ID int32
 	Li []int32
 	Ls []string
+	Ld []string
 }
