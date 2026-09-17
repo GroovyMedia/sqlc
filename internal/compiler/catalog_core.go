@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/sqlc-dev/sqlc/internal/core"
@@ -10,8 +11,9 @@ import (
 
 // coreResultCatalog dumps the core catalog into the legacy catalog shape a
 // Result carries, so codegen sees the same table models either way a query
-// set was analyzed. Only relations make the trip: codegen reads tables and
-// their columns to build models, and none of the types, functions or
+// set was analyzed. Relations and the enums a schema declared make the
+// trip: codegen reads tables and their columns to build models, and enums
+// to build a type per enum, and none of the other types, functions or
 // operators the core catalog also holds.
 func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 	cat := catalog.New("public")
@@ -19,8 +21,20 @@ func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The legacy catalog starts with its default schema, which the
+	// namespace of the same name fills rather than repeats.
+	schemas := make(map[string]*catalog.Schema, len(namespaces))
+	for _, s := range cat.Schemas {
+		schemas[s.Name] = s
+	}
+	defaults := c.DefaultNamespaces()
 	for _, ns := range namespaces {
-		schema := &catalog.Schema{Name: ns.Name}
+		schema, ok := schemas[ns.Name]
+		if !ok {
+			schema = &catalog.Schema{Name: ns.Name}
+			schemas[ns.Name] = schema
+			cat.Schemas = append(cat.Schemas, schema)
+		}
 		tables, err := c.TablesInNamespace(ns.OID)
 		if err != nil {
 			return nil, err
@@ -56,7 +70,23 @@ func coreResultCatalog(c *core.Catalog) (*catalog.Catalog, error) {
 			}
 			schema.Tables = append(schema.Tables, t)
 		}
-		cat.Schemas = append(cat.Schemas, schema)
+		// A column's type names an enum the way the analyzer spells it:
+		// bare when the enum sits in one of the dialect's default
+		// namespaces (main for DuckDB, dbo for SQL Server), qualified
+		// otherwise. Codegen looks a bare name up in the catalog's default
+		// schema, so that is where such an enum goes; a qualified one
+		// stays with its namespace.
+		enums, err := c.EnumsInNamespace(ns.OID)
+		if err != nil {
+			return nil, err
+		}
+		target := schema
+		if slices.Contains(defaults, ns.Name) {
+			target = schemas[cat.DefaultSchema]
+		}
+		for _, e := range enums {
+			target.Types = append(target.Types, &catalog.Enum{Name: e.Name, Vals: e.Labels})
+		}
 	}
 	return cat, nil
 }
