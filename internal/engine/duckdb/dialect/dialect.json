@@ -13,6 +13,15 @@
   "arithmetic": ["+", "-", "*", "/", "//", "%", "**", "^"],
   "arithmetic_categories": "N",
   "cast_categories": "NSD",
+  "value_functions": {
+    "current_catalog": "current_database",
+    "current_date": "current_date",
+    "current_schema": "current_schema",
+    "current_time": "get_current_time",
+    "current_timestamp": "get_current_timestamp",
+    "localtime": "current_localtime",
+    "localtimestamp": "current_localtimestamp"
+  },
   "rewrites": [
     {
       "from": "varchar($1)",

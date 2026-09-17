@@ -184,6 +184,11 @@ func (a *analyzer) typeColumnRef(c *ast.ColumnRef) (exprType, error) {
 		if t, ok, err := a.typeAlias(column); err != nil || ok {
 			return t, err
 		}
+		// Or one that calls a function the dialect spells without
+		// parentheses, as CURRENT_DATE does.
+		if fn, ok := a.cat.ValueFunction(column); ok {
+			return a.typeFuncCall(&ast.FuncCall{Funcname: &ast.List{Items: []ast.Node{&ast.String{Str: fn}}}})
+		}
 		return exprType{}, fmt.Errorf("unknown column %q", column)
 	}
 	if len(parts) > 2 {

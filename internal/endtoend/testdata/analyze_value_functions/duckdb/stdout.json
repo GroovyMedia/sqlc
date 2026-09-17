@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Now",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "now",
+        "type": {
+          "name": "timestamp with time zone"
+        }
+      },
+      {
+        "name": "t",
+        "type": {
+          "name": "time with time zone"
+        }
+      },
+      {
+        "name": "lts",
+        "type": {
+          "name": "timestamp"
+        }
+      },
+      {
+        "name": "lt",
+        "type": {
+          "name": "time"
+        }
+      },
+      {
+        "name": "s",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "varchar"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Today",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "id",
+        "type": {
+          "name": "bigint"
+        },
+        "table": "runs"
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "ColumnWins",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "current_date",
+        "type": {
+          "name": "date",
+          "nullable": true
+        },
+        "table": "runs"
+      }
+    ],
+    "params": []
+  }
+]
