@@ -9,7 +9,8 @@
         "go": {
           "package": "querytest",
           "out": "go",
-          "sql_package": "database/sql"
+          "sql_package": "database/sql",
+          "build_tags": "cgo"
         }
       }
     }
