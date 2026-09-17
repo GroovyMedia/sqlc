@@ -1028,6 +1028,9 @@ func (c *cc) convertOnConflict(n *dw.OnConflictInfo) *ast.OnConflictClause {
 	default:
 		clause.Action = ast.OnConflictActionNothing
 	}
+	if n.TargetWhere != nil {
+		clause.Infer = &ast.InferClause{WhereClause: c.convertExpr(n.TargetWhere)}
+	}
 	if n.SetInfo != nil {
 		clause.TargetList = c.convertSetClause(n.SetInfo)
 		if n.SetInfo.Condition != nil {

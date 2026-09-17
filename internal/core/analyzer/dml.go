@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/sqlc-dev/sqlc/internal/core"
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
@@ -24,7 +25,50 @@ func (a *analyzer) analyzeInsert(s *ast.InsertStmt) error {
 	if err := a.bindInsertValues(s.SelectStmt, rel, targets); err != nil {
 		return err
 	}
+	if s.OnConflictClause != nil {
+		if err := a.analyzeOnConflict(s.OnConflictClause, rel); err != nil {
+			return fmt.Errorf("on conflict: %w", err)
+		}
+	}
 	return a.projectReturning(s.ReturningList)
+}
+
+// analyzeOnConflict types an ON CONFLICT clause. DO UPDATE sets the
+// target's columns the way UPDATE does, and its expressions read the
+// target's row by a bare name or the table's, and the row the INSERT
+// proposed as excluded, which is in scope for the clause alone and only
+// by that name.
+func (a *analyzer) analyzeOnConflict(c *ast.OnConflictClause, target scopeRel) error {
+	if c.Infer != nil && c.Infer.WhereClause != nil {
+		if _, err := a.typeExpr(c.Infer.WhereClause); err != nil {
+			return fmt.Errorf("where: %w", err)
+		}
+	}
+	excluded := target
+	excluded.alias = "excluded"
+	excluded.qualifiedOnly = true
+	sc := &scope{rels: append(slices.Clone(a.scope.rels), excluded), joined: a.scope.joined}
+	defer a.binding(sc)()
+
+	for _, item := range listItems(c.TargetList) {
+		rt, ok := item.(*ast.ResTarget)
+		if !ok || rt.Name == nil {
+			continue
+		}
+		col, ok := findColumn(target, *rt.Name)
+		if !ok {
+			return fmt.Errorf("unknown column %q", *rt.Name)
+		}
+		if err := a.bindValue(target, &col, rt.Val); err != nil {
+			return fmt.Errorf("set %s: %w", *rt.Name, err)
+		}
+	}
+	if c.WhereClause != nil {
+		if _, err := a.typeExpr(c.WhereClause); err != nil {
+			return fmt.Errorf("where: %w", err)
+		}
+	}
+	return nil
 }
 
 func (a *analyzer) analyzeUpdate(s *ast.UpdateStmt) error {
