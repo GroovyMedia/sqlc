@@ -596,6 +596,12 @@ func (c *cc) convertFunction(e *dw.FunctionExpression) ast.Node {
 
 	// Binary and prefix operators parse as operator-named functions.
 	if e.IsOperator {
+		// doc ->> 'key' binds as json_extract_string(doc, 'key'), which
+		// says, as the operator cannot, that it is NULL for a key that
+		// is not there.
+		if name == "->>" && len(e.Arguments) == 2 {
+			return c.call("json_extract_string", e, e.Arguments[0].Expr, e.Arguments[1].Expr)
+		}
 		switch len(e.Arguments) {
 		case 1:
 			return &ast.A_Expr{
