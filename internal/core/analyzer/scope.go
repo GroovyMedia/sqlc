@@ -28,6 +28,9 @@ type scopeRel struct {
 	// values marks a relation a VALUES list produces, whose column names
 	// are the engine's to give.
 	values bool
+	// nulled names the columns a grouping set leaves out, which are NULL
+	// in the rows of that set, whatever the column declares.
+	nulled map[string]bool
 	// causes says, by column name, why a column of a derived relation has
 	// no type, for a strict dialect's error.
 	causes map[string]string

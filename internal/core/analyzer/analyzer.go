@@ -73,6 +73,11 @@ type analyzer struct {
 	// resolving guards against an alias that refers to itself.
 	resolving map[string]bool
 
+	// lambdas counts, by name, the parameters of the lambdas the
+	// expression being typed is inside of, which a name in it refers to
+	// before any column.
+	lambdas map[string]int
+
 	// stars are the expansions every star in the statement asked for, shared
 	// with the analyzers of the queries nested in it so one statement reports
 	// all of them.
@@ -219,6 +224,12 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 			// GROUP BY * is DuckDB's GROUP BY ALL: every column not under
 			// an aggregate, which names no expression to type.
 			if isStarRef(g) {
+				continue
+			}
+			if gs, ok := g.(*ast.GroupingSet); ok {
+				if err := a.typeGroupingSet(gs); err != nil {
+					return fmt.Errorf("group by: %w", err)
+				}
 				continue
 			}
 			if _, err := a.typeExpr(g); err != nil {

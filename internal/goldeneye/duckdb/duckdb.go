@@ -302,6 +302,13 @@ var mayBeNull = map[string]int{
 	"union_extract":                 2,
 }
 
+// syntaxFunctions lists the functions DuckDB binds from syntax rather than
+// by name, which duckdb_functions() does not list. TRY(expr) is expr, or
+// NULL where evaluating expr would have raised an error.
+var syntaxFunctions = []dialect.Function{
+	{Name: "try", Args: []dialect.Arg{{Type: "any"}}, Returns: "any", Nullable: true},
+}
+
 func functionKind(functionType string) string {
 	switch functionType {
 	case "aggregate":
@@ -428,7 +435,13 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 	if err != nil {
 		return nil, nil, err
 	}
-	return spliceMacros(funcs, macros, macroAt), operators, nil
+	funcs = spliceMacros(funcs, macros, macroAt)
+	for _, fn := range syntaxFunctions {
+		// The catalog's functions come sorted by name; keep it so.
+		at := sort.Search(len(funcs), func(i int) bool { return funcs[i].Name > fn.Name })
+		funcs = append(funcs[:at], append([]dialect.Function{fn}, funcs[at:]...)...)
+	}
+	return funcs, operators, nil
 }
 
 // spliceMacros lists each macro's overloads at the place its first row

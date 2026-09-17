@@ -292,7 +292,7 @@ func columnType(rel scopeRel, col core.ClassColumn) exprType {
 		typeOID:            col.TypeOID,
 		expr:               col.Type,
 		untyped:            rel.causes[col.Name],
-		nullable:           !col.NotNull || rel.nullable,
+		nullable:           !col.NotNull || rel.nullable || rel.nulled[col.Name],
 		sourceClassOID:     rel.classOID,
 		sourceAttributeOID: col.AttOID,
 		sourceTableAlias:   rel.alias,

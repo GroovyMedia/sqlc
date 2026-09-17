@@ -1,0 +1,228 @@
+[
+  {
+    "name": "Rollup",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "Cube",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "GroupingSets",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "GroupingSetsShared",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "PlainAndRollup",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "name",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "RollupExpression",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "r",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        }
+      },
+      {
+        "name": "r_or_all",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "RollupAlias",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "r",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  },
+  {
+    "name": "RollupHaving",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "region",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "authors"
+        }
+      }
+    ]
+  },
+  {
+    "name": "PlainGroupBy",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "region",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "authors"
+      },
+      {
+        "name": "c",
+        "type": {
+          "name": "bigint"
+        }
+      }
+    ],
+    "params": []
+  }
+]

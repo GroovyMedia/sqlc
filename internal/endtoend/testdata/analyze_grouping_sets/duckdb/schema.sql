@@ -1,0 +1,6 @@
+CREATE TABLE authors (
+  id     INTEGER PRIMARY KEY,
+  name   VARCHAR NOT NULL,
+  region VARCHAR NOT NULL,
+  score  INTEGER NOT NULL
+);

@@ -99,6 +99,33 @@ func (c *cc) applyModifiers(stmt *ast.SelectStmt, mods []dw.ResultModifier) {
 	}
 }
 
+// convertGroupingSets converts a GROUP BY with more than one grouping
+// set, which is how darkwing gives ROLLUP, CUBE and GROUPING SETS: the
+// expressions once, and each set as the indexes of the ones it groups
+// by. sqlc's AST spells it as PostgreSQL's parser does, a set of sets,
+// each listing its expressions.
+func (c *cc) convertGroupingSets(n *dw.SelectNode) *ast.GroupingSet {
+	exprs := make([]ast.Node, len(n.GroupExpressions))
+	for i, expr := range n.GroupExpressions {
+		exprs[i] = c.convertExpr(expr)
+	}
+	sets := &ast.GroupingSet{Kind: ast.GroupingSetSets, Content: &ast.List{}}
+	for _, set := range n.GroupSets {
+		item := &ast.GroupingSet{Kind: ast.GroupingSetEmpty}
+		if len(set) > 0 {
+			item.Kind = ast.GroupingSetSimple
+			item.Content = &ast.List{}
+			for _, i := range set {
+				if i >= 0 && i < len(exprs) {
+					item.Content.Items = append(item.Content.Items, exprs[i])
+				}
+			}
+		}
+		sets.Content.Items = append(sets.Content.Items, item)
+	}
+	return sets
+}
+
 func (c *cc) convertWithClause(ctes dw.CTEMap) *ast.WithClause {
 	if len(ctes.Entries) == 0 {
 		return nil
@@ -186,6 +213,8 @@ func (c *cc) convertSelectNode(n *dw.SelectNode) ast.Node {
 	if n.AggregateHandling == dw.ForceAggregates {
 		// GROUP BY ALL is also spelled GROUP BY *.
 		stmt.GroupClause = &ast.List{Items: []ast.Node{star()}}
+	} else if len(n.GroupSets) > 1 {
+		stmt.GroupClause = &ast.List{Items: []ast.Node{c.convertGroupingSets(n)}}
 	} else if len(n.GroupExpressions) > 0 {
 		stmt.GroupClause = &ast.List{}
 		for _, expr := range n.GroupExpressions {
@@ -417,6 +446,12 @@ func (c *cc) convertJoinRef(t *dw.JoinRef) ast.Node {
 	if t.RefType == dw.JoinRefNatural {
 		join.IsNatural = true
 	}
+	// A POSITIONAL JOIN pairs rows by position and pads the shorter side
+	// with NULLs. Which side is shorter is not known here, so both are
+	// nullable, as in a FULL JOIN.
+	if t.RefType == dw.JoinRefPositional {
+		join.Jointype = ast.JoinTypeFull
+	}
 	if t.Condition != nil {
 		join.Quals = c.convertExpr(t.Condition)
 	}
@@ -491,13 +526,34 @@ func (c *cc) convertExpr(expr dw.Expr) ast.Node {
 
 // convertLambda converts what darkwing parses as a single-arrow lambda,
 // "doc -> 'key'": outside a lambda function DuckDB binds it as the JSON
-// extract operator, json_extract(doc, 'key'). The lambda keyword form
-// has no sqlc node.
+// extract operator, json_extract(doc, 'key'), and DuckDB 2.0 rejects
+// the arrow as a lambda unless told otherwise. The keyword form,
+// "lambda x: x + 1", is a lambda: its parameters come as one column
+// reference, or as a row of them.
 func (c *cc) convertLambda(e *dw.LambdaExpression) ast.Node {
-	if e.SyntaxType != dw.LambdaSingleArrow {
-		return c.todo(e)
+	if e.SyntaxType == dw.LambdaSingleArrow {
+		return c.call("json_extract", e, e.LHS, e.Expr)
 	}
-	return c.call("json_extract", e, e.LHS, e.Expr)
+	lambda := &ast.LambdaExpr{
+		Params:   &ast.List{},
+		Body:     c.convertExpr(e.Expr),
+		Location: c.loc(e),
+	}
+	params := []dw.Expr{e.LHS}
+	if row, ok := e.LHS.(*dw.FunctionExpression); ok && identifier(row.FunctionName) == "row" {
+		params = params[:0]
+		for _, arg := range row.Arguments {
+			params = append(params, arg.Expr)
+		}
+	}
+	for _, param := range params {
+		ref, ok := param.(*dw.ColumnRefExpression)
+		if !ok || len(ref.ColumnNames) != 1 {
+			return c.todo(e)
+		}
+		lambda.Params.Items = append(lambda.Params.Items, &ast.String{Str: identifier(ref.ColumnNames[0])})
+	}
+	return lambda
 }
 
 // call is a call of a built-in function over operands, which is how DuckDB
@@ -601,6 +657,27 @@ func (c *cc) convertFunction(e *dw.FunctionExpression) ast.Node {
 		// is not there.
 		if name == "->>" && len(e.Arguments) == 2 {
 			return c.call("json_extract_string", e, e.Arguments[0].Expr, e.Arguments[1].Expr)
+		}
+		// x LIKE y ESCAPE z binds as like_escape(x, y, z). With a
+		// constant escape it is the LIKE operator over x and y, so that a
+		// placeholder pattern is typed and named as one without ESCAPE
+		// is; the escape is in the text and nothing else reads it. Any
+		// other escape keeps the call, which the dialect lists.
+		if (name == "like_escape" || name == "ilike_escape") && len(e.Arguments) == 3 {
+			if _, ok := e.Arguments[2].Expr.(*dw.ConstantExpression); ok {
+				op := "~~"
+				if name == "ilike_escape" {
+					op = "~~*"
+				}
+				return &ast.A_Expr{
+					Kind:     ast.A_Expr_Kind_OP,
+					Name:     &ast.List{Items: []ast.Node{&ast.String{Str: op}}},
+					Lexpr:    c.convertExpr(e.Arguments[0].Expr),
+					Rexpr:    c.convertExpr(e.Arguments[1].Expr),
+					Location: c.loc(e),
+				}
+			}
+			return c.call(name, e, e.Arguments[0].Expr, e.Arguments[1].Expr, e.Arguments[2].Expr)
 		}
 		switch len(e.Arguments) {
 		case 1:
@@ -722,6 +799,11 @@ func (c *cc) convertOperator(e *dw.OperatorExpression) ast.Node {
 		return c.call("array_slice", e, e.Operands...)
 	case dw.StructExtract:
 		return c.call("struct_extract", e, e.Operands...)
+	case dw.OperatorTry:
+		// TRY(expr) is expr, or NULL where expr would have raised an
+		// error. The dialect seeds it as a function, since DuckDB's
+		// catalog does not list it.
+		return c.call("try", e, e.Operands...)
 	default:
 		return c.todo(e)
 	}
@@ -809,6 +891,7 @@ func (c *cc) convertConjunction(e *dw.ConjunctionExpression) ast.Node {
 func (c *cc) convertCast(e *dw.CastExpression) ast.Node {
 	cast := &ast.TypeCast{
 		Arg:      c.convertExpr(e.Child),
+		Try:      e.TryCast,
 		Location: c.loc(e),
 	}
 	switch {
@@ -911,7 +994,43 @@ func (c *cc) convertWindow(e *dw.WindowExpression) ast.Node {
 	if len(e.Orders) > 0 {
 		fc.Over.OrderClause = c.convertOrderBys(e.Orders)
 	}
+	fc.Over.FrameOptions = frameOptions(e)
+	if e.StartExpr != nil {
+		fc.Over.StartOffset = c.convertExpr(e.StartExpr)
+	}
+	if e.EndExpr != nil {
+		fc.Over.EndOffset = c.convertExpr(e.EndExpr)
+	}
 	return fc
+}
+
+// frameOptions maps a window's frame to the flags ast.WindowDef carries.
+// The analysis reads the frame's mode and whether each bound is an
+// expression; a default frame reports 0.
+func frameOptions(e *dw.WindowExpression) int {
+	opts := 0
+	if m := frameMode(e.FrameStart) | frameMode(e.FrameEnd); m != 0 {
+		opts |= ast.FrameOptionNonDefault | m
+	}
+	if e.StartExpr != nil {
+		opts |= ast.FrameOptionNonDefault | ast.FrameOptionStartOffset
+	}
+	if e.EndExpr != nil {
+		opts |= ast.FrameOptionNonDefault | ast.FrameOptionEndOffset
+	}
+	return opts
+}
+
+func frameMode(b dw.WindowBoundary) int {
+	switch b {
+	case dw.WindowCurrentRowRows, dw.WindowExprPrecedingRows, dw.WindowExprFollowingRows:
+		return ast.FrameOptionRows
+	case dw.WindowCurrentRowRange, dw.WindowExprPrecedingRange, dw.WindowExprFollowingRange:
+		return ast.FrameOptionRange
+	case dw.WindowCurrentRowGroups, dw.WindowExprPrecedingGroups, dw.WindowExprFollowingGroups:
+		return ast.FrameOptionGroups
+	}
+	return 0
 }
 
 // convertTypeExpression maps an unbound DuckDB type to a sqlc type name and

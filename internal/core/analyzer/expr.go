@@ -42,6 +42,9 @@ func (a *analyzer) typeExpr(n ast.Node) (exprType, error) {
 	case *ast.TODO:
 		return exprType{untyped: unsupported(e)}, nil
 
+	case *ast.LambdaExpr:
+		return a.typeLambda(e)
+
 	case *ast.A_Const:
 		return a.typeConst(e)
 
@@ -164,6 +167,11 @@ func (a *analyzer) typeColumnRef(c *ast.ColumnRef) (exprType, error) {
 	if len(parts) >= 2 {
 		relation = parts[0]
 		column = parts[1]
+	}
+	// A lambda's parameter hides a column of its name. What it holds is
+	// the function's to say, which the seed does not.
+	if relation == "" && a.lambdas[column] > 0 {
+		return exprType{untyped: fmt.Sprintf("lambda parameter %q has no type", column)}, nil
 	}
 	rel, col, ok, err := a.resolveColumn(relation, column)
 	if err != nil {
@@ -1052,9 +1060,37 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	return ret, nil
 }
 
+// typeLambda types a lambda passed to a function: its body, with the
+// parameters in scope, for the placeholders the body holds. The lambda
+// itself is of the type the dialect seeds its parameters as, when it
+// seeds one, which is how list_transform and its relatives list it.
+func (a *analyzer) typeLambda(l *ast.LambdaExpr) (exprType, error) {
+	if a.lambdas == nil {
+		a.lambdas = map[string]int{}
+	}
+	for _, item := range listItems(l.Params) {
+		if s, ok := item.(*ast.String); ok {
+			a.lambdas[s.Str]++
+		}
+	}
+	_, err := a.typeExpr(l.Body)
+	for _, item := range listItems(l.Params) {
+		if s, ok := item.(*ast.String); ok {
+			a.lambdas[s.Str]--
+		}
+	}
+	if err != nil {
+		return exprType{}, fmt.Errorf("lambda: %w", err)
+	}
+	if oid, err := a.cat.TypeOID("lambda"); err == nil {
+		return exprType{typeOID: oid}, nil
+	}
+	return exprType{untyped: "a lambda has no type"}, nil
+}
+
 // typeFuncClauses types the clauses a call carries besides its arguments:
-// FILTER, an aggregate's ORDER BY, and a window's PARTITION BY and ORDER
-// BY, each of which may hold a placeholder.
+// FILTER, an aggregate's ORDER BY, and a window's PARTITION BY, ORDER BY
+// and frame bounds, each of which may hold a placeholder.
 func (a *analyzer) typeFuncClauses(f *ast.FuncCall) error {
 	if f.AggFilter != nil {
 		if _, err := a.typeExpr(f.AggFilter); err != nil {
@@ -1072,6 +1108,24 @@ func (a *analyzer) typeFuncClauses(f *ast.FuncCall) error {
 		}
 		if err := a.typeSortClause(f.Over.OrderClause); err != nil {
 			return err
+		}
+		for _, off := range []ast.Node{f.Over.StartOffset, f.Over.EndOffset} {
+			if off == nil {
+				continue
+			}
+			// A ROWS or GROUPS bound counts rows, as LIMIT does. A RANGE
+			// bound is a value in the ORDER BY column's domain, or an
+			// interval over a date or time, which a bare placeholder
+			// cannot say.
+			if f.Over.FrameOptions&ast.FrameOptionRange == 0 {
+				if err := a.typeLimit(off); err != nil {
+					return fmt.Errorf("frame: %w", err)
+				}
+				continue
+			}
+			if _, err := a.typeExpr(off); err != nil {
+				return fmt.Errorf("frame: %w", err)
+			}
 		}
 	}
 	return nil
@@ -1375,12 +1429,15 @@ func (a *analyzer) typeTypeCast(c *ast.TypeCast) (exprType, error) {
 		if err := a.typeOperands(pr, t); err != nil {
 			return exprType{}, err
 		}
+		// A TRY_CAST is NULL where the cast would fail, whatever it
+		// was given.
+		t.nullable = t.nullable || c.Try
 		return t, nil
 	}
 	arg, err := a.typeExpr(c.Arg)
 	if err != nil {
 		return exprType{}, err
 	}
-	t.nullable = t.nullable || arg.nullable
+	t.nullable = t.nullable || arg.nullable || c.Try
 	return t, nil
 }

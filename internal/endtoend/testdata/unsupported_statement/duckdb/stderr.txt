@@ -1,0 +1,1 @@
+Error: error parsing queries: query.sql:5:1: CreateMacro: unsupported statement; query.sql:8:1: CallProcedure: unsupported statement; query.sql:11:1: MergeAuthors: unsupported statement

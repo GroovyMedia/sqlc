@@ -74,7 +74,9 @@ the hand-written files alone, and the checks do not look at them.
   (`greatest`, `least` and `concat_ws` are NULL for some NULL arguments
   and not others, which the seed cannot say, so they propagate); a `LAMBDA` parameter, which no value has the type
   of, is seeded as a type of its own, so that `list_transform` and its
-  relatives are listed; and the parameter types of the built-in macros
+  relatives are listed; `TRY(expr)`, which DuckDB binds from syntax
+  and lists under no name, is seeded as a function of its argument's
+  type that may be NULL; and the parameter types of the built-in macros
   — `array_append`, `split_part`, `date_add` and the rest — which the
   catalog lists as expressions over untyped parameters, are written in
   `duckdb/macros.go`, and each overload's return type is what the CLI

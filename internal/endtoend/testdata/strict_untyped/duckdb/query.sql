@@ -28,3 +28,6 @@ WITH t(y) AS (SELECT #2 AS x FROM users) SELECT y FROM t;
 -- name: UntypedInsertParam :exec
 INSERT INTO users (id, name)
 SELECT $1, $2 FROM (SELECT 1 AS one) WHERE frobnicate(one) = $3;
+
+-- name: LambdaParam :many
+SELECT id FROM users WHERE list_contains(list_transform(tags, lambda x: x + $1), 2);
