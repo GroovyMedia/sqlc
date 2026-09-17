@@ -481,7 +481,22 @@ func (a *analyzer) typeCoalesce(e *ast.CoalesceExpr) (exprType, error) {
 		nullable = nullable && t.nullable
 	}
 	out.nullable = nullable
+	a.inferParams(listItems(e.Args), out)
 	return out, nil
+}
+
+// inferParams gives the bare placeholders among a set of alternatives the
+// type the set was found to have, as a placeholder among the arguments of
+// COALESCE or the results of CASE holds what the others do.
+func (a *analyzer) inferParams(nodes []ast.Node, t exprType) {
+	if t.typeOID == 0 && t.expr == nil {
+		return
+	}
+	for _, n := range nodes {
+		if pr, ok := n.(*ast.ParamRef); ok {
+			a.inferParam(pr.Number, exprType{typeOID: t.typeOID, expr: t.expr})
+		}
+	}
 }
 
 // typeFirstOf types a set of alternative results, taking the first one that has
@@ -502,6 +517,7 @@ func (a *analyzer) typeFirstOf(nodes []ast.Node, nullable bool) (exprType, error
 		nullable = nullable || t.nullable
 	}
 	out.nullable = nullable
+	a.inferParams(nodes, out)
 	return out, nil
 }
 
@@ -689,7 +705,8 @@ func (a *analyzer) typeComparison(e *ast.A_Expr) (exprType, error) {
 	return a.boolType(false)
 }
 
-// typeNullIf types NULLIF(x, y), which is x, made nullable.
+// typeNullIf types NULLIF(x, y), which is x's type, made nullable. The
+// result is an expression's, not the column's x may be.
 func (a *analyzer) typeNullIf(e *ast.A_Expr) (exprType, error) {
 	leftT, err := a.typeExpr(e.Lexpr)
 	if err != nil {
@@ -698,8 +715,7 @@ func (a *analyzer) typeNullIf(e *ast.A_Expr) (exprType, error) {
 	if err := a.typeOperands(e.Rexpr, leftT); err != nil {
 		return exprType{}, err
 	}
-	leftT.nullable = true
-	return leftT, nil
+	return exprType{typeOID: leftT.typeOID, expr: leftT.expr, nullable: true}, nil
 }
 
 // typeOperands types a node standing opposite one of known type, giving a bare
@@ -851,6 +867,9 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 	if name == "" {
 		return exprType{}, fmt.Errorf("func call: missing name")
 	}
+	if err := a.typeFuncClauses(f); err != nil {
+		return exprType{}, err
+	}
 
 	if f.AggStar && (name == "count" || name == "count.*") {
 		if overloads, err := a.cat.FindProcs("count", nil); err == nil && len(overloads) > 0 {
@@ -928,6 +947,42 @@ func (a *analyzer) typeFuncCall(f *ast.FuncCall) (exprType, error) {
 		ret.nullable = true
 	}
 	return ret, nil
+}
+
+// typeFuncClauses types the clauses a call carries besides its arguments:
+// FILTER, an aggregate's ORDER BY, and a window's PARTITION BY and ORDER
+// BY, each of which may hold a placeholder.
+func (a *analyzer) typeFuncClauses(f *ast.FuncCall) error {
+	if f.AggFilter != nil {
+		if _, err := a.typeExpr(f.AggFilter); err != nil {
+			return fmt.Errorf("filter: %w", err)
+		}
+	}
+	if err := a.typeSortClause(f.AggOrder); err != nil {
+		return err
+	}
+	if f.Over != nil {
+		for _, item := range listItems(f.Over.PartitionClause) {
+			if _, err := a.typeExpr(item); err != nil {
+				return fmt.Errorf("partition by: %w", err)
+			}
+		}
+		if err := a.typeSortClause(f.Over.OrderClause); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *analyzer) typeSortClause(l *ast.List) error {
+	for _, item := range listItems(l) {
+		if sb, ok := item.(*ast.SortBy); ok {
+			if _, err := a.typeExpr(sb.Node); err != nil {
+				return fmt.Errorf("order by: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // typeUnnest types unnest in a dialect whose seed cannot describe it —
