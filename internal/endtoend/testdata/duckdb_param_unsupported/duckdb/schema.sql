@@ -1,0 +1,5 @@
+CREATE TABLE authors (
+  id    BIGINT PRIMARY KEY,
+  name  TEXT NOT NULL,
+  small INTEGER NOT NULL
+);

@@ -3,6 +3,8 @@ package compiler
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/sqlc-dev/sqlc/internal/core"
@@ -12,6 +14,7 @@ import (
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
 	"github.com/sqlc-dev/sqlc/internal/sql/named"
 	"github.com/sqlc-dev/sqlc/internal/sql/preprocess"
+	"github.com/sqlc-dev/sqlc/internal/sql/sqlerr"
 	"github.com/sqlc-dev/sqlc/internal/sql/validate"
 )
 
@@ -69,6 +72,9 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 		for _, p := range res.Parameters {
 			params = append(params, Parameter{Number: p.Number, Column: coreParamColumn(p, namedParams)})
 		}
+		if err := unanalyzedParam(name, pre, res.Parameters); err != nil {
+			return nil, err
+		}
 		expanded, err = source.Mutate(rawSQL, c.expandCore(raw, res.Stars))
 		if err != nil {
 			return nil, err
@@ -101,6 +107,33 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 		SQL:             trimmed,
 		InsertIntoTable: insertTable,
 	}, nil
+}
+
+// unanalyzedParam reports the first placeholder, in source order, that the
+// analyzer did not see. The engine converts syntax it has no node for into
+// a TODO, and a placeholder inside one is invisible to the analyzer: the
+// query text still holds it, but the generated code would not bind it and
+// every call would fail with too few arguments.
+func unanalyzedParam(name string, pre *preprocess.Statement, params []core.Parameter) error {
+	seen := make(map[int]bool, len(params))
+	for _, p := range params {
+		seen[p.Number] = true
+	}
+	for _, offset := range slices.Sorted(maps.Keys(pre.Numbers)) {
+		number := pre.Numbers[offset]
+		if seen[number] {
+			continue
+		}
+		ref := fmt.Sprintf("$%d", number)
+		if pname, ok := pre.Params.NameFor(number); ok && pname != "" {
+			ref = "@" + pname
+		}
+		return &sqlerr.Error{
+			Message:  fmt.Sprintf("%s: parameter %s is inside an expression sqlc cannot analyze", name, ref),
+			Location: offset,
+		}
+	}
+	return nil
 }
 
 func coreColumn(c core.Column) *Column {
