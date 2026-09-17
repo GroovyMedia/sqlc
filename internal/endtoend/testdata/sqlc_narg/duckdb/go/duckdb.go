@@ -5,6 +5,7 @@
 package querytest
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,12 @@ import (
 // those scan through a wrapper; and it binds a JSON message, a big
 // integer and a nil slice only in a form of its own, so those are
 // converted on the way in.
+//
+// A JSON column is not byte-stable through this driver: it decodes the
+// text with encoding/json, so a number passes through float64 (an
+// integer above 2^53 loses precision), keys come back sorted, and the
+// JSON literal null reads as SQL NULL. Select j::VARCHAR to get the stored
+// text as a string.
 
 // duckdbList scans a LIST into a Go slice, each element the way a column of
 // its type scans. NULL scans as a nil slice.
@@ -88,12 +95,24 @@ func (s duckdbJSONScanner) Scan(src any) error {
 		*s.dst = nil
 		return nil
 	}
-	b, err := json.Marshal(src)
+	b, err := duckdbJSONText(src)
 	if err != nil {
 		return err
 	}
 	*s.dst = b
 	return nil
+}
+
+// duckdbJSONText encodes the value the driver decoded a JSON column into
+// back to JSON text, with & < > left as they are.
+func duckdbJSONText(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
 // duckdbParam binds a JSON message, a BLOB or a big integer. A nil one is

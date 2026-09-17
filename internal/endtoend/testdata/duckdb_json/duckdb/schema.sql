@@ -1,0 +1,4 @@
+CREATE TABLE ads (
+  id   INTEGER PRIMARY KEY,
+  meta JSON NOT NULL
+);
