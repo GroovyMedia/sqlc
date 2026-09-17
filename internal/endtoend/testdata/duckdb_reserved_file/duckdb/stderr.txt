@@ -1,0 +1,2 @@
+# package querytest
+error generating code: output file duckdb.go would be written twice; choose another output_*_file_name

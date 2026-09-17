@@ -1,0 +1,65 @@
+{
+  "version": "2",
+  "sql": [
+    {
+      "engine": "duckdb",
+      "schema": "schema.sql",
+      "queries": "query.sql",
+      "gen": {
+        "go": {
+          "package": "override",
+          "out": "go",
+          "sql_package": "database/sql",
+          "emit_pointers_for_null_types": true,
+          "overrides": [
+            {
+              "db_type": "decimal",
+              "go_type": {
+                "import": "github.com/jackc/pgtype",
+                "type": "Numeric"
+              }
+            },
+            {
+              "db_type": "decimal",
+              "nullable": true,
+              "go_type": {
+                "type": "float64",
+                "pointer": true
+              }
+            },
+            {
+              "db_type": "json",
+              "nullable": true,
+              "go_type": {
+                "import": "github.com/sqlc-dev/pqtype",
+                "type": "NullRawMessage"
+              }
+            },
+            {
+              "column": "things.text_meta",
+              "go_type": {
+                "type": "string",
+                "pointer": true
+              }
+            },
+            {
+              "db_type": "uuid",
+              "go_type": {
+                "import": "github.com/gofrs/uuid",
+                "type": "UUID"
+              }
+            },
+            {
+              "db_type": "uuid",
+              "nullable": true,
+              "go_type": {
+                "type": "string",
+                "pointer": true
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

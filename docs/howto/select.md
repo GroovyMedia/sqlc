@@ -403,3 +403,15 @@ the list with `sqlc.arg()` and compare with `= ANY(...)` instead.
 SELECT * FROM authors
 WHERE id = ANY(sqlc.arg(ids));
 ```
+
+DuckDB gives that placeholder no type, so the driver types the list from the
+Go slice: a `[]string` or a `[]uuid.UUID` arrives as `VARCHAR[]`, which DuckDB
+compares with a `VARCHAR` or an enum column but not with a `UUID` or `DECIMAL`
+one. Cast the list for those columns; the generated code binds a `[]uuid.UUID`
+or a `[]string` into it.
+
+```sql
+-- name: ListAuthorsByExternalIDs :many
+SELECT * FROM authors
+WHERE external_id = ANY(sqlc.arg(ids)::UUID[]);
+```

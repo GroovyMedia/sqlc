@@ -61,8 +61,8 @@ type SetIntervalParams struct {
 
 func (q *Queries) SetInterval(ctx context.Context, arg SetIntervalParams) error {
 	_, err := q.db.ExecContext(ctx, setInterval,
-		arg.Iv,
-		arg.M,
+		duckdbNullParam(arg.Iv),
+		duckdbNullParam(arg.M),
 		duckdbParam(arg.H),
 		arg.U,
 		arg.F4,

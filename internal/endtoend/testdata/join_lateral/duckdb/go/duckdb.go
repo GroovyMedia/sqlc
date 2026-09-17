@@ -5,7 +5,9 @@
 package querytest
 
 import (
+	"bytes"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -14,13 +16,21 @@ import (
 
 // The helpers below sit between the generated code and
 // github.com/duckdb/duckdb-go/v2. The driver hands database/sql a LIST as
-// []any, a JSON column decoded and a DECIMAL as its own Decimal value, so
-// those scan through a wrapper; and it binds a JSON message, a big
-// integer and a nil slice only in a form of its own, so those are
+// []any, a JSON column decoded, a DECIMAL as its own Decimal value and a
+// UUID as 16 raw bytes, so those scan through a wrapper; and it binds a
+// list, a JSON message, a big integer, a nil slice and a nullable
+// INTERVAL, STRUCT or MAP only in a form of its own, so those are
 // converted on the way in.
+//
+// A JSON column is not byte-stable through this driver: it decodes the
+// text with encoding/json, so a number passes through float64 (an
+// integer above 2^53 loses precision), keys come back sorted, and the
+// JSON literal null reads as SQL NULL. Select j::VARCHAR to get the stored
+// text as a string.
 
 // duckdbList scans a LIST into a Go slice, each element the way a column of
-// its type scans. NULL scans as a nil slice.
+// its type scans: a NULL element is an error unless the element type can
+// hold nil. NULL scans as a nil slice.
 func duckdbList[T any](dst *[]T) sql.Scanner {
 	return duckdbListScanner[T]{dst}
 }
@@ -48,52 +58,131 @@ func (s duckdbListScanner[T]) Scan(src any) error {
 	return nil
 }
 
-// duckdbListParam binds a list parameter. A nil slice is NULL, a JSON
-// element is handed over as the string the driver takes, and so is an
-// element of a named string type such as a generated enum, which the
-// driver does not know; every other slice binds as it is.
+// duckdbNested scans a LIST of LISTs into a nested Go slice whose leaf
+// type is E, each leaf the way a column of its type scans. dst points to
+// the slice. A NULL at any depth scans as a nil slice.
+func duckdbNested[E any](dst any) sql.Scanner {
+	return duckdbNestedScanner[E]{reflect.ValueOf(dst).Elem()}
+}
+
+type duckdbNestedScanner[E any] struct {
+	dst reflect.Value
+}
+
+func (s duckdbNestedScanner[E]) Scan(src any) error {
+	return duckdbScanNested[E](s.dst, src)
+}
+
+func duckdbScanNested[E any](dst reflect.Value, src any) error {
+	if leaf, ok := dst.Addr().Interface().(*E); ok {
+		return duckdbScanValue(leaf, src)
+	}
+	if src == nil {
+		dst.Set(reflect.Zero(dst.Type()))
+		return nil
+	}
+	items, ok := src.([]any)
+	if !ok {
+		return fmt.Errorf("cannot scan %T into %s", src, dst.Type())
+	}
+	out := reflect.MakeSlice(dst.Type(), len(items), len(items))
+	for i, item := range items {
+		if err := duckdbScanNested[E](out.Index(i), item); err != nil {
+			return err
+		}
+	}
+	dst.Set(out)
+	return nil
+}
+
+// duckdbListParam binds a list parameter. A nil slice is NULL. A slice
+// of bools, numbers, strings or UUIDs, nested or not, is handed over as a
+// duckdbListArg, and a JSON message or a named string type such as a
+// generated enum as a duckdbListArg of strings. A slice of any other
+// element type binds as it is: the driver would type a time.Time as
+// TIMESTAMPTZ and a []byte as VARCHAR on its own. A BLOB[] parameter
+// takes no [][]byte either way; write $n::VARCHAR[]::BLOB[] and pass the
+// bytes as '\xHH' text.
 func duckdbListParam[T any](v []T) any {
 	if v == nil {
 		return nil
 	}
 	if msgs, ok := any(v).([]json.RawMessage); ok {
-		out := make([]string, len(msgs))
+		out := make(duckdbListArg[string], len(msgs))
 		for i, m := range msgs {
 			out[i] = string(m)
 		}
 		return out
 	}
-	if elem := reflect.TypeOf(v).Elem(); elem.Kind() == reflect.String && elem != reflect.TypeOf("") {
-		out := make([]string, len(v))
+	elem := reflect.TypeOf(v).Elem()
+	if elem.Kind() == reflect.String && elem != reflect.TypeOf("") {
+		out := make(duckdbListArg[string], len(v))
 		for i := range v {
 			out[i] = reflect.ValueOf(v[i]).String()
 		}
 		return out
 	}
+	for elem.Kind() == reflect.Slice {
+		elem = elem.Elem()
+	}
+	switch elem.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.String, reflect.Array:
+		return duckdbListArg[T](v)
+	}
 	return v
 }
 
+// duckdbListArg is a list parameter the driver types from its Go
+// elements, so that DuckDB casts the list to the parameter's type. Bound
+// as a plain slice, the driver would instead build each element for the
+// parameter's type itself: it asserts the exact Go width of a number and
+// panics on any other, and it cannot build a DECIMAL, ENUM or UUID
+// element at all.
+type duckdbListArg[T any] []T
+
+func (v duckdbListArg[T]) Value() (driver.Value, error) {
+	return []T(v), nil
+}
+
 // duckdbJSON scans a JSON column, which the driver decodes, back into its
-// text. NULL scans as a nil message.
-func duckdbJSON(dst *json.RawMessage) sql.Scanner {
-	return duckdbJSONScanner{dst}
+// text, for a json.RawMessage, a string, a []byte or a type with a Scan
+// method. NULL scans as a nil message, or as NULL into any other type.
+func duckdbJSON[T any](dst *T) sql.Scanner {
+	return duckdbJSONScanner[T]{dst}
 }
 
-type duckdbJSONScanner struct {
-	dst *json.RawMessage
+type duckdbJSONScanner[T any] struct {
+	dst *T
 }
 
-func (s duckdbJSONScanner) Scan(src any) error {
-	if src == nil {
-		*s.dst = nil
+func (s duckdbJSONScanner[T]) Scan(src any) error {
+	var text []byte
+	if src != nil {
+		var err error
+		if text, err = duckdbJSONText(src); err != nil {
+			return err
+		}
+		src = text
+	}
+	if d, ok := any(s.dst).(*json.RawMessage); ok {
+		*d = text
 		return nil
 	}
-	b, err := json.Marshal(src)
-	if err != nil {
-		return err
+	return duckdbScanValue(s.dst, src)
+}
+
+// duckdbJSONText encodes the value the driver decoded a JSON column into
+// back to JSON text, with & < > left as they are.
+func duckdbJSONText(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
 	}
-	*s.dst = b
-	return nil
+	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
 // duckdbParam binds a JSON message, a BLOB or a big integer. A nil one is
@@ -119,6 +208,44 @@ func duckdbParam(v any) any {
 	return v
 }
 
+// duckdbPtrParam binds a nullable INTERVAL, STRUCT or MAP held in a
+// pointer. The driver takes only the bare Interval, map[string]any and
+// Map; a pointer to one falls through to database/sql's own converter,
+// which refuses a struct or a map. nil is NULL.
+func duckdbPtrParam[T any](v *T) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+// duckdbNullParam binds a nullable INTERVAL, STRUCT or MAP held in a
+// sql.Null, which database/sql's converter would unwrap and then refuse
+// like a pointer. An invalid one is NULL.
+func duckdbNullParam[T any](v sql.Null[T]) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.V
+}
+
+// duckdbUUID scans a UUID, which the driver hands over as 16 raw bytes,
+// as its canonical text.
+func duckdbUUID[T any](dst *T) sql.Scanner {
+	return duckdbUUIDScanner[T]{dst}
+}
+
+type duckdbUUIDScanner[T any] struct {
+	dst *T
+}
+
+func (s duckdbUUIDScanner[T]) Scan(src any) error {
+	if b, ok := src.([]byte); ok && len(b) == 16 {
+		src = fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	return duckdbScanValue(s.dst, src)
+}
+
 // duckdbDecimal scans a DECIMAL into the text of the number.
 func duckdbDecimal[T any](dst *T) sql.Scanner {
 	return duckdbDecimalScanner[T]{dst}
@@ -129,15 +256,22 @@ type duckdbDecimalScanner[T any] struct {
 }
 
 func (s duckdbDecimalScanner[T]) Scan(src any) error {
-	if str, ok := src.(fmt.Stringer); ok {
-		src = str.String()
-	}
 	return duckdbScanValue(s.dst, src)
 }
 
 // duckdbScanValue scans one value into dst: through its Scan method when
-// it has one, and through database/sql's own conversion otherwise.
+// it has one, and through database/sql's own conversion otherwise. The
+// driver's Decimal, alone or as a LIST element, is scanned as its text.
+// NULL lands only in a type that can hold nil, as database/sql has it.
 func duckdbScanValue[T any](dst *T, src any) error {
+	// Only the driver's Decimal has this pair of methods: a *big.Int's
+	// Float64 returns two values, and a time.Time has no Float64.
+	if d, ok := src.(interface {
+		String() string
+		Float64() float64
+	}); ok {
+		src = d.String()
+	}
 	switch d := any(dst).(type) {
 	case *json.RawMessage:
 		return duckdbJSON(d).Scan(src)
@@ -147,6 +281,13 @@ func duckdbScanValue[T any](dst *T, src any) error {
 	var n sql.Null[T]
 	if err := n.Scan(src); err != nil {
 		return err
+	}
+	if !n.Valid {
+		switch reflect.TypeOf(dst).Elem().Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+		default:
+			return fmt.Errorf("converting NULL to %T is unsupported", *dst)
+		}
 	}
 	*dst = n.V
 	return nil

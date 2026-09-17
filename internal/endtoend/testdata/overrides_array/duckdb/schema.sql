@@ -1,0 +1,4 @@
+CREATE TABLE things (
+  id   INTEGER PRIMARY KEY,
+  tags INTEGER[] NOT NULL
+);

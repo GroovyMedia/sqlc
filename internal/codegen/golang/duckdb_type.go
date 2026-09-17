@@ -260,9 +260,18 @@ func duckdbType(req *plugin.GenerateRequest, options *opts.Options, col *plugin.
 
 // duckdbScanner names the helper in the duckdb file that scans a column
 // into the Go type chosen for it, or "" when the driver's value lands in
-// the type as it is.
+// the type as it is. The helper follows the column's type, not the Go
+// type, so an override still gets the driver's value converted.
 func duckdbScanner(typ string, col *plugin.Column) string {
 	if isSlice(typ) {
+		if elem := strings.TrimPrefix(typ, "[]"); isSlice(elem) {
+			// A LIST of LISTs. The helper needs the leaf type spelled
+			// out: a generic function cannot take it from a nested slice.
+			for isSlice(elem) {
+				elem = strings.TrimPrefix(elem, "[]")
+			}
+			return "duckdbNested[" + elem + "]"
+		}
 		return "duckdbList"
 	}
 	if col == nil || col.Type == nil {
@@ -270,14 +279,16 @@ func duckdbScanner(typ string, col *plugin.Column) string {
 	}
 	switch strings.ToLower(col.Type.Name) {
 	case "json":
-		if typ == "json.RawMessage" {
-			return "duckdbJSON"
-		}
+		return "duckdbJSON"
 	case "decimal", "dec", "numeric":
+		return "duckdbDecimal"
+	case "uuid", "guid":
 		switch typ {
-		case "string", "*string", "sql.NullString":
-			return "duckdbDecimal"
+		case "uuid.UUID", "*uuid.UUID", "uuid.NullUUID", "[]byte":
+			// These take the 16 raw bytes the driver hands over.
+			return ""
 		}
+		return "duckdbUUID"
 	}
 	return ""
 }

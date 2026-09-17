@@ -178,7 +178,7 @@ func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error 
 		arg.Ntstz,
 		arg.Tsns,
 		arg.Iv,
-		arg.Niv,
+		duckdbNullParam(arg.Niv),
 		arg.U,
 		arg.Nu,
 		duckdbParam(arg.J),
@@ -192,9 +192,9 @@ func (q *Queries) CreateThing(ctx context.Context, arg CreateThingParams) error 
 		duckdbListParam(arg.Lj),
 		duckdbListParam(arg.Fixed),
 		arg.St,
-		arg.Nst,
+		duckdbNullParam(arg.Nst),
 		arg.M,
-		arg.Nm,
+		duckdbNullParam(arg.Nm),
 	)
 	return err
 }
