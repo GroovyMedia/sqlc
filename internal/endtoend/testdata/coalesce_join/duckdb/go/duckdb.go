@@ -82,26 +82,30 @@ func duckdbListParam[T any](v []T) any {
 }
 
 // duckdbJSON scans a JSON column, which the driver decodes, back into its
-// text. NULL scans as a nil message.
-func duckdbJSON(dst *json.RawMessage) sql.Scanner {
-	return duckdbJSONScanner{dst}
+// text, for a json.RawMessage, a string, a []byte or a type with a Scan
+// method. NULL scans as a nil message, or as NULL into any other type.
+func duckdbJSON[T any](dst *T) sql.Scanner {
+	return duckdbJSONScanner[T]{dst}
 }
 
-type duckdbJSONScanner struct {
-	dst *json.RawMessage
+type duckdbJSONScanner[T any] struct {
+	dst *T
 }
 
-func (s duckdbJSONScanner) Scan(src any) error {
-	if src == nil {
-		*s.dst = nil
+func (s duckdbJSONScanner[T]) Scan(src any) error {
+	var text []byte
+	if src != nil {
+		var err error
+		if text, err = duckdbJSONText(src); err != nil {
+			return err
+		}
+		src = text
+	}
+	if d, ok := any(s.dst).(*json.RawMessage); ok {
+		*d = text
 		return nil
 	}
-	b, err := duckdbJSONText(src)
-	if err != nil {
-		return err
-	}
-	*s.dst = b
-	return nil
+	return duckdbScanValue(s.dst, src)
 }
 
 // duckdbJSONText encodes the value the driver decoded a JSON column into
@@ -137,6 +141,23 @@ func duckdbParam(v any) any {
 		}
 	}
 	return v
+}
+
+// duckdbUUID scans a UUID, which the driver hands over as 16 raw bytes,
+// as its canonical text.
+func duckdbUUID[T any](dst *T) sql.Scanner {
+	return duckdbUUIDScanner[T]{dst}
+}
+
+type duckdbUUIDScanner[T any] struct {
+	dst *T
+}
+
+func (s duckdbUUIDScanner[T]) Scan(src any) error {
+	if b, ok := src.([]byte); ok && len(b) == 16 {
+		src = fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	return duckdbScanValue(s.dst, src)
 }
 
 // duckdbDecimal scans a DECIMAL into the text of the number.
