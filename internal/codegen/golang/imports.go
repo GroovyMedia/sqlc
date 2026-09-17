@@ -124,7 +124,7 @@ func (i *importer) dbImports() fileImports {
 		{Path: "context"},
 	}
 
-	sqlpkg := parseDriver(i.Options.SqlPackage)
+	sqlpkg := parseDriver(i.Options)
 	switch sqlpkg {
 	case opts.SQLDriverPGXV4:
 		pkg = append(pkg, ImportSpec{Path: "github.com/jackc/pgconn"})
@@ -151,6 +151,7 @@ var stdlibTypes = map[string]string{
 	"net.HardwareAddr": "net",
 	"netip.Addr":       "net/netip",
 	"netip.Prefix":     "net/netip",
+	"big.Int":          "math/big",
 }
 
 var pqtypeTypes = map[string]struct{}{
@@ -168,7 +169,7 @@ func buildImports(options *opts.Options, queries []Query, uses func(string) bool
 		std["database/sql"] = struct{}{}
 	}
 
-	sqlpkg := parseDriver(options.SqlPackage)
+	sqlpkg := parseDriver(options)
 	for _, q := range queries {
 		if q.Cmd == metadata.CmdExecResult {
 			switch sqlpkg {
@@ -227,6 +228,9 @@ func buildImports(options *opts.Options, queries []Query, uses func(string) bool
 	_, overrideVector := overrideTypes["pgvector.Vector"]
 	if uses("pgvector.Vector") && !overrideVector {
 		pkg[ImportSpec{Path: "github.com/pgvector/pgvector-go"}] = struct{}{}
+	}
+	if uses("duckdb.") && sqlpkg.IsDuckDB() {
+		pkg[ImportSpec{Path: string(opts.SQLDriverDuckDB)}] = struct{}{}
 	}
 
 	// Custom imports
@@ -405,11 +409,11 @@ func (i *importer) queryImports(filename string) fileImports {
 		std["context"] = struct{}{}
 	}
 
-	sqlpkg := parseDriver(i.Options.SqlPackage)
+	sqlpkg := parseDriver(i.Options)
 	if sqlcSliceScan() && !sqlpkg.IsPGX() {
 		std["strings"] = struct{}{}
 	}
-	if sliceScan() && !sqlpkg.IsPGX() {
+	if sliceScan() && !sqlpkg.IsPGX() && !sqlpkg.IsDuckDB() {
 		pkg[ImportSpec{Path: "github.com/lib/pq"}] = struct{}{}
 	}
 
@@ -494,7 +498,7 @@ func (i *importer) batchImports() fileImports {
 
 	std["context"] = struct{}{}
 	std["errors"] = struct{}{}
-	sqlpkg := parseDriver(i.Options.SqlPackage)
+	sqlpkg := parseDriver(i.Options)
 	switch sqlpkg {
 	case opts.SQLDriverPGXV4:
 		pkg[ImportSpec{Path: "github.com/jackc/pgx/v4"}] = struct{}{}
@@ -514,7 +518,14 @@ func trimSliceAndPointerPrefix(v string) string {
 func hasPrefixIgnoringSliceAndPointerPrefix(s, prefix string) bool {
 	trimmedS := trimSliceAndPointerPrefix(s)
 	trimmedPrefix := trimSliceAndPointerPrefix(prefix)
-	return strings.HasPrefix(trimmedS, trimmedPrefix)
+	if strings.HasPrefix(trimmedS, trimmedPrefix) {
+		return true
+	}
+	// A sql.Null[T] uses T's package as well as database/sql.
+	if inner, ok := strings.CutPrefix(trimmedS, "sql.Null["); ok {
+		return strings.HasPrefix(strings.TrimSuffix(inner, "]"), trimmedPrefix)
+	}
+	return false
 }
 
 func replaceConflictedArg(imports [][]ImportSpec, queries []Query) []Query {

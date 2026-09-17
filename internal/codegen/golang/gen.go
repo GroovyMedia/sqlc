@@ -185,7 +185,7 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		EmitAllEnumValues:         options.EmitAllEnumValues,
 		UsesCopyFrom:              usesCopyFrom(queries),
 		UsesBatch:                 usesBatch(queries),
-		SQLDriver:                 parseDriver(options.SqlPackage),
+		SQLDriver:                 parseDriver(options),
 		Q:                         "`",
 		Package:                   options.Package,
 		ModelsPackage:             options.ModelsPackage(),
@@ -291,9 +291,15 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 	if options.OutputBatchFileName != "" {
 		batchFileName = options.OutputBatchFileName
 	}
+	duckdbFileName := "duckdb.go"
 
 	if err := execute(dbFileName, "dbFile"); err != nil {
 		return nil, err
+	}
+	if tctx.SQLDriver.IsDuckDB() {
+		if err := execute(duckdbFileName, "duckdbFile"); err != nil {
+			return nil, err
+		}
 	}
 	if options.ModelsEmitEnabled() {
 		if err := execute(modelsFileName, "modelsFile"); err != nil {

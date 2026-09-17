@@ -28,6 +28,7 @@ const (
 	SQLDriverPGXV5                      = "github.com/jackc/pgx/v5"
 	SQLDriverLibPQ                      = "github.com/lib/pq"
 	SQLDriverGoSQLDriverMySQL           = "github.com/go-sql-driver/mysql"
+	SQLDriverDuckDB                     = "github.com/duckdb/duckdb-go/v2"
 )
 
 var validDrivers = map[string]struct{}{
@@ -35,6 +36,7 @@ var validDrivers = map[string]struct{}{
 	string(SQLDriverPGXV5):            {},
 	string(SQLDriverLibPQ):            {},
 	string(SQLDriverGoSQLDriverMySQL): {},
+	string(SQLDriverDuckDB):           {},
 }
 
 func validateDriver(sqlDriver string) error {
@@ -50,6 +52,10 @@ func (d SQLDriver) IsPGX() bool {
 
 func (d SQLDriver) IsGoSQLDriverMySQL() bool {
 	return d == SQLDriverGoSQLDriverMySQL
+}
+
+func (d SQLDriver) IsDuckDB() bool {
+	return d == SQLDriverDuckDB
 }
 
 func (d SQLDriver) Package() string {
