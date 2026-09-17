@@ -142,8 +142,9 @@ func isSlice(typ string) bool {
 }
 
 // param wraps a query argument the driver does not bind as it is: a lib/pq
-// array, or a DuckDB list, JSON message, BLOB or big integer, which the
-// duckdb helpers hand the driver the way it takes them.
+// array, or a DuckDB list, JSON message, BLOB, big integer or nullable
+// INTERVAL, STRUCT or MAP, which the duckdb helpers hand the driver the
+// way it takes them.
 func (v QueryValue) param(typ string, col *plugin.Column, name string) string {
 	switch {
 	case col != nil && col.IsSqlcSlice:
@@ -152,6 +153,10 @@ func (v QueryValue) param(typ string, col *plugin.Column, name string) string {
 		switch typ {
 		case "json.RawMessage", "[]byte", "*big.Int":
 			return "duckdbParam(" + name + ")"
+		case "*duckdb.Interval", "*map[string]any", "*duckdb.Map":
+			return "duckdbPtrParam(" + name + ")"
+		case "sql.Null[duckdb.Interval]", "sql.Null[map[string]any]", "sql.Null[duckdb.Map]":
+			return "duckdbNullParam(" + name + ")"
 		}
 		if isSlice(typ) {
 			return "duckdbListParam(" + name + ")"

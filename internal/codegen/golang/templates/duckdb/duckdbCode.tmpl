@@ -179,6 +179,27 @@ func duckdbParam(v any) any {
 	return v
 }
 
+// duckdbPtrParam binds a nullable INTERVAL, STRUCT or MAP held in a
+// pointer. The driver takes only the bare Interval, map[string]any and
+// Map; a pointer to one falls through to database/sql's own converter,
+// which refuses a struct or a map. nil is NULL.
+func duckdbPtrParam[T any](v *T) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+// duckdbNullParam binds a nullable INTERVAL, STRUCT or MAP held in a
+// sql.Null, which database/sql's converter would unwrap and then refuse
+// like a pointer. An invalid one is NULL.
+func duckdbNullParam[T any](v sql.Null[T]) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.V
+}
+
 // duckdbUUID scans a UUID, which the driver hands over as 16 raw bytes,
 // as its canonical text.
 func duckdbUUID[T any](dst *T) sql.Scanner {

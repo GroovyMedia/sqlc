@@ -476,7 +476,7 @@ func (q *Queries) CreateSample(ctx context.Context, arg CreateSampleParams) erro
 		arg.Tstz,
 		arg.Ntstz,
 		arg.Iv,
-		arg.Niv,
+		duckdbPtrParam(arg.Niv),
 		arg.U,
 		arg.Nu,
 		duckdbParam(arg.J),
@@ -496,9 +496,9 @@ func (q *Queries) CreateSample(ctx context.Context, arg CreateSampleParams) erro
 		duckdbListParam(arg.Fixed),
 		duckdbListParam(arg.Nfixed),
 		arg.St,
-		arg.Nst,
+		duckdbPtrParam(arg.Nst),
 		arg.M,
-		arg.Nm,
+		duckdbPtrParam(arg.Nm),
 	)
 	return err
 }
