@@ -95,7 +95,17 @@ func (a *analyzer) recordStar(s core.StarExpansion) {
 // placeholder inside the subquery is reported with the rest, and it sees this
 // query's scope, so a correlated reference resolves.
 func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
-	sub := &analyzer{
+	sub := a.nested()
+	if err := sub.analyzeSelect(s); err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
+// nested is the analyzer of a statement nested in this one, sharing what
+// subquery shares.
+func (a *analyzer) nested() *analyzer {
+	return &analyzer{
 		cat:    a.cat,
 		params: a.params,
 		outer:  a,
@@ -103,10 +113,30 @@ func (a *analyzer) subquery(s *ast.SelectStmt) (*analyzer, error) {
 		stars:  a.stars,
 		strict: a.strict,
 	}
-	if err := sub.analyzeSelect(s); err != nil {
-		return nil, err
+}
+
+// cteBody analyzes what a WITH clause defines a relation as: a SELECT, or
+// an INSERT, UPDATE or DELETE whose RETURNING list is the relation's
+// columns. It reports false for a body it has no analysis for.
+func (a *analyzer) cteBody(n ast.Node) (*analyzer, bool, error) {
+	sub := a.nested()
+	var err error
+	switch s := n.(type) {
+	case *ast.SelectStmt:
+		err = sub.analyzeSelect(s)
+	case *ast.InsertStmt:
+		err = sub.analyzeInsert(s)
+	case *ast.UpdateStmt:
+		err = sub.analyzeUpdate(s)
+	case *ast.DeleteStmt:
+		err = sub.analyzeDelete(s)
+	default:
+		return nil, false, nil
 	}
-	return sub, nil
+	if err != nil {
+		return nil, false, err
+	}
+	return sub, true, nil
 }
 
 func (a *analyzer) subqueryColumns(s *ast.SelectStmt) ([]core.Column, error) {
@@ -351,13 +381,12 @@ func (a *analyzer) bindCTEs(with *ast.WithClause) error {
 		if !ok || cte.Ctename == nil {
 			continue
 		}
-		sel, ok := cte.Ctequery.(*ast.SelectStmt)
-		if !ok {
-			continue
-		}
-		sub, err := a.subquery(sel)
+		sub, ok, err := a.cteBody(cte.Ctequery)
 		if err != nil {
 			return fmt.Errorf("with %s: %w", *cte.Ctename, err)
+		}
+		if !ok {
+			continue
 		}
 		rel := sub.derivedRel(*cte.Ctename)
 		renameColumns(&rel, cte.Aliascolnames)

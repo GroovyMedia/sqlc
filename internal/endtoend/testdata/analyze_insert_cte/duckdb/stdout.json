@@ -1,0 +1,106 @@
+[
+  {
+    "name": "AddChannels",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "array",
+            "args": [
+              {
+                "type": {
+                  "name": "integer"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "CopyBucket",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "bucket",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "buckets"
+      },
+      {
+        "name": "channel",
+        "type": {
+          "name": "integer"
+        },
+        "table": "buckets"
+      },
+      {
+        "name": "last_free_at",
+        "type": {
+          "name": "timestamp",
+          "nullable": true
+        },
+        "table": "buckets"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "bucket",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "buckets"
+        }
+      }
+    ]
+  },
+  {
+    "name": "MoveBucket",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "bucket",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "buckets"
+      },
+      {
+        "name": "channel",
+        "type": {
+          "name": "integer"
+        },
+        "table": "buckets"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "bucket",
+          "type": {
+            "name": "varchar"
+          },
+          "table": "buckets"
+        }
+      }
+    ]
+  }
+]

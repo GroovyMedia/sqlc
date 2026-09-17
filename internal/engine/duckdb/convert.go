@@ -67,6 +67,12 @@ func (c *cc) convertQueryNode(q dw.QueryNode) ast.Node {
 		return c.convertSetOperationNode(n)
 	case *dw.RecursiveCTENode:
 		return c.convertRecursiveCTENode(n)
+	case *dw.InsertQueryNode:
+		return c.convertInsertStatement(n.Insert)
+	case *dw.UpdateQueryNode:
+		return c.convertUpdateStatement(n.Update)
+	case *dw.DeleteQueryNode:
+		return c.convertDeleteStatement(n.Delete)
 	default:
 		return c.todo(q)
 	}

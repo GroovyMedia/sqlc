@@ -9,6 +9,9 @@ import (
 )
 
 func (a *analyzer) analyzeInsert(s *ast.InsertStmt) error {
+	if err := a.bindCTEs(s.WithClause); err != nil {
+		return err
+	}
 	if s.Relation == nil {
 		return fmt.Errorf("insert: missing relation")
 	}
