@@ -1231,9 +1231,9 @@
 {"name":"cot","args":[{"type":"double"}],"returns":"double"}
 {"name":"count","kind":"a","args":[{"type":"any"}],"returns":"bigint","never_null":true}
 {"name":"count","kind":"a","returns":"bigint","never_null":true}
-{"name":"count_if","kind":"a","args":[{"type":"boolean"}],"returns":"hugeint","never_null":true}
+{"name":"count_if","kind":"a","args":[{"type":"boolean"}],"returns":"hugeint","nullable":true}
 {"name":"count_star","kind":"a","returns":"bigint","never_null":true}
-{"name":"countif","kind":"a","args":[{"type":"boolean"}],"returns":"hugeint","never_null":true}
+{"name":"countif","kind":"a","args":[{"type":"boolean"}],"returns":"hugeint","nullable":true}
 {"name":"covar_pop","kind":"a","args":[{"type":"double"},{"type":"double"}],"returns":"double","nullable":true}
 {"name":"covar_samp","kind":"a","args":[{"type":"double"},{"type":"double"}],"returns":"double","nullable":true}
 {"name":"create_sort_key","args":[{"type":"any"},{"type":"any","mode":"v"}],"returns":"blob"}

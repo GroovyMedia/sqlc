@@ -103,5 +103,31 @@
       }
     ],
     "params": []
+  },
+  {
+    "name": "Counts",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "total",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "with_bio",
+        "type": {
+          "name": "bigint"
+        }
+      },
+      {
+        "name": "active_count",
+        "type": {
+          "name": "hugeint",
+          "nullable": true
+        }
+      }
+    ],
+    "params": []
   }
 ]

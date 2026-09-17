@@ -387,17 +387,20 @@ ORDER BY function_name, parameter_types::VARCHAR, return_type`, &rows)
 			continue
 		}
 
+		// count returns 0 over no rows and for a NULL argument; count_if
+		// is a sum of conditions, NULL like any other aggregate.
+		isCount := row.Name == "count" || row.Name == "count_star"
 		fn := dialect.Function{
 			Name:    row.Name,
 			Kind:    functionKind(row.FunctionType),
 			Returns: returns,
 			// An aggregate over no rows returns NULL — except count,
 			// which returns 0 — and so does a lookup that finds nothing.
-			Nullable: (row.FunctionType == "aggregate" && !strings.HasPrefix(row.Name, "count")) ||
+			Nullable: (row.FunctionType == "aggregate" && !isCount) ||
 				(mayBeNull[row.Name] > 0 && len(args) >= mayBeNull[row.Name]),
 			// A function's result is NULL when an argument is, except for
 			// the ones that handle NULL themselves.
-			NeverNull: strings.HasPrefix(row.Name, "count") || neverNull[row.Name],
+			NeverNull: isCount || neverNull[row.Name],
 		}
 		for _, arg := range args {
 			fn.Args = append(fn.Args, dialect.Arg{Type: arg})

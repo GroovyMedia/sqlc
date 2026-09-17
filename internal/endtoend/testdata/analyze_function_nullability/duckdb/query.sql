@@ -21,3 +21,6 @@ SELECT
   from_json(extra, '"INTEGER"')::INTEGER AS m,
   union_extract(handle, 'str') AS str
 FROM authors;
+
+-- name: Counts :one
+SELECT count(*) AS total, count(bio) AS with_bio, count_if(active) AS active_count FROM authors;
