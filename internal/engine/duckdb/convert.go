@@ -99,6 +99,33 @@ func (c *cc) applyModifiers(stmt *ast.SelectStmt, mods []dw.ResultModifier) {
 	}
 }
 
+// convertGroupingSets converts a GROUP BY with more than one grouping
+// set, which is how darkwing gives ROLLUP, CUBE and GROUPING SETS: the
+// expressions once, and each set as the indexes of the ones it groups
+// by. sqlc's AST spells it as PostgreSQL's parser does, a set of sets,
+// each listing its expressions.
+func (c *cc) convertGroupingSets(n *dw.SelectNode) *ast.GroupingSet {
+	exprs := make([]ast.Node, len(n.GroupExpressions))
+	for i, expr := range n.GroupExpressions {
+		exprs[i] = c.convertExpr(expr)
+	}
+	sets := &ast.GroupingSet{Kind: ast.GroupingSetSets, Content: &ast.List{}}
+	for _, set := range n.GroupSets {
+		item := &ast.GroupingSet{Kind: ast.GroupingSetEmpty}
+		if len(set) > 0 {
+			item.Kind = ast.GroupingSetSimple
+			item.Content = &ast.List{}
+			for _, i := range set {
+				if i >= 0 && i < len(exprs) {
+					item.Content.Items = append(item.Content.Items, exprs[i])
+				}
+			}
+		}
+		sets.Content.Items = append(sets.Content.Items, item)
+	}
+	return sets
+}
+
 func (c *cc) convertWithClause(ctes dw.CTEMap) *ast.WithClause {
 	if len(ctes.Entries) == 0 {
 		return nil
@@ -186,6 +213,8 @@ func (c *cc) convertSelectNode(n *dw.SelectNode) ast.Node {
 	if n.AggregateHandling == dw.ForceAggregates {
 		// GROUP BY ALL is also spelled GROUP BY *.
 		stmt.GroupClause = &ast.List{Items: []ast.Node{star()}}
+	} else if len(n.GroupSets) > 1 {
+		stmt.GroupClause = &ast.List{Items: []ast.Node{c.convertGroupingSets(n)}}
 	} else if len(n.GroupExpressions) > 0 {
 		stmt.GroupClause = &ast.List{}
 		for _, expr := range n.GroupExpressions {

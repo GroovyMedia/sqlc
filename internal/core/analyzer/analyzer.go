@@ -221,6 +221,12 @@ func (a *analyzer) analyzeSelect(s *ast.SelectStmt) error {
 			if isStarRef(g) {
 				continue
 			}
+			if gs, ok := g.(*ast.GroupingSet); ok {
+				if err := a.typeGroupingSet(gs); err != nil {
+					return fmt.Errorf("group by: %w", err)
+				}
+				continue
+			}
 			if _, err := a.typeExpr(g); err != nil {
 				return fmt.Errorf("group by: %w", err)
 			}
