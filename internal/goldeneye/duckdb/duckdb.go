@@ -260,9 +260,10 @@ var neverNull = map[string]bool{
 
 // mayBeNull lists the scalar and window functions whose result can be NULL
 // when no argument is: a lookup that finds nothing, a window row with no
-// neighbour, an aggregate over an empty list. The number is the fewest
-// arguments an overload takes for that to hold — json_type(j) always has an
-// answer, json_type(j, path) has none for a path that is not there.
+// neighbour or a window frame that can be empty, an aggregate over an
+// empty list. The number is the fewest arguments an overload takes for
+// that to hold — json_type(j) always has an answer, json_type(j, path)
+// has none for a path that is not there.
 var mayBeNull = map[string]int{
 	"aggregate":                     2,
 	"array_aggr":                    2,
@@ -272,6 +273,7 @@ var mayBeNull = map[string]int{
 	"array_position":                2,
 	"array_to_string":               2,
 	"array_to_string_comma_default": 2,
+	"first_value":                   1,
 	"get_block_size":                1,
 	"json_array_length":             2,
 	"json_extract":                  2,
@@ -282,6 +284,7 @@ var mayBeNull = map[string]int{
 	"json_type":                     2,
 	"json_value":                    2,
 	"lag":                           1,
+	"last_value":                    1,
 	"lead":                          1,
 	"list_aggr":                     2,
 	"list_aggregate":                2,

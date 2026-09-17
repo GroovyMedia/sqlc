@@ -1420,7 +1420,7 @@
 {"name":"filter","args":[{"type":"any[]"},{"type":"lambda"}],"returns":"any[]"}
 {"name":"first","kind":"a","args":[{"type":"any"}],"returns":"any","nullable":true}
 {"name":"first","kind":"a","args":[{"type":"decimal"}],"returns":"decimal","nullable":true}
-{"name":"first_value","kind":"w","args":[{"type":"any"}],"returns":"any"}
+{"name":"first_value","kind":"w","args":[{"type":"any"}],"returns":"any","nullable":true}
 {"name":"flatten","args":[{"type":"any[][]"}],"returns":"any[]"}
 {"name":"floor","args":[{"type":"decimal"}],"returns":"decimal"}
 {"name":"floor","args":[{"type":"double"}],"returns":"double"}
@@ -1753,7 +1753,7 @@
 {"name":"last_day","args":[{"type":"date"}],"returns":"date"}
 {"name":"last_day","args":[{"type":"timestamp with time zone"}],"returns":"date"}
 {"name":"last_day","args":[{"type":"timestamp"}],"returns":"date"}
-{"name":"last_value","kind":"w","args":[{"type":"any"}],"returns":"any"}
+{"name":"last_value","kind":"w","args":[{"type":"any"}],"returns":"any","nullable":true}
 {"name":"lcase","args":[{"type":"varchar"}],"returns":"varchar"}
 {"name":"lcm","args":[{"type":"bigint"},{"type":"bigint"}],"returns":"bigint"}
 {"name":"lcm","args":[{"type":"hugeint"},{"type":"hugeint"}],"returns":"hugeint"}
