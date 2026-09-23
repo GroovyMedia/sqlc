@@ -327,10 +327,14 @@ type BatchField struct {
 	List string
 }
 
-// BatchJSON reports a DuckDB :batch query that takes all its rows in one
-// statement.
+// BatchJSON reports a DuckDB :batch query whose rows travel as JSON: all
+// in one statement, or one statement per batch element (BatchEach).
 func (q Query) BatchJSON() bool {
-	return q.Batch != nil && q.Batch.Mode == "json"
+	return q.Batch != nil && (q.Batch.Mode == "json" || q.Batch.Mode == "json_each")
+}
+
+func (q Query) BatchEach() bool {
+	return q.Batch != nil && q.Batch.Mode == "json_each"
 }
 
 // BatchLists is the lengths of the lists a JSON batch unnests, as Go

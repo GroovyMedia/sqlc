@@ -167,6 +167,83 @@ func (b *BulkPauseDailyBatchResults) Close() error {
 	return nil
 }
 
+const bulkSetStatus = `-- name: BulkSetStatus :batchexec
+INSERT INTO daily (day, source, status)
+SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3::status FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
+ON CONFLICT (day, source) DO UPDATE SET status = EXCLUDED.status;
+`
+
+const bulkSetStatusRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
+
+type BulkSetStatusBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []BulkSetStatusParams
+	closed bool
+}
+
+type BulkSetStatusParams struct {
+	Days     []time.Time
+	Sources  []string
+	Statuses []string
+}
+
+func (q *Queries) BulkSetStatus(ctx context.Context, arg []BulkSetStatusParams) *BulkSetStatusBatchResults {
+	return &BulkSetStatusBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+type bulkSetStatusBatchRow struct {
+	P1   any `json:"p1"`
+	P2   any `json:"p2"`
+	P3   any `json:"p3"`
+	Ord  int `json:"sqlc_ord"`
+	Elem int `json:"sqlc_elem"`
+}
+
+func (b *BulkSetStatusBatchResults) jsonRows() []bulkSetStatusBatchRow {
+	var out []bulkSetStatusBatchRow
+	for sqlcIdx, arg := range b.rows {
+		for sqlcI := range duckdbBatchLen(len(arg.Days), len(arg.Sources), len(arg.Statuses)) {
+			out = append(out, bulkSetStatusBatchRow{
+				P1:   duckdbBatchAtWith(arg.Days, sqlcI, duckdbBatchDate),
+				P2:   duckdbBatchAt(arg.Sources, sqlcI),
+				P3:   duckdbBatchAt(arg.Statuses, sqlcI),
+				Ord:  len(out),
+				Elem: sqlcIdx,
+			})
+		}
+	}
+	return out
+}
+
+func (b *BulkSetStatusBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbBatchWrite(b.ctx, b.db, b.jsonRows(), bulkSetStatus, bulkSetStatusRounds)
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *BulkSetStatusBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+func (b *BulkSetStatusBatchResults) Close() error {
+	b.closed = true
+	return nil
+}
+
 const bulkUpsertSeen = `-- name: BulkUpsertSeen :batchmany
 INSERT INTO seen (ad_id, day, ct)
 SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"DATE","p3":"INTEGER","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
@@ -327,7 +404,7 @@ func (b *InsertLogBatchResults) Close() error {
 }
 
 const insertLogLists = `-- name: InsertLogLists :batchmany
-INSERT INTO log (msg) SELECT unnest($1::VARCHAR[]) RETURNING id;
+INSERT INTO log (msg) SELECT sqlc_b.p1 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b RETURNING id;
 `
 
 type InsertLogListsBatchResults struct {
@@ -341,30 +418,53 @@ func (q *Queries) InsertLogLists(ctx context.Context, msgs [][]string) *InsertLo
 	return &InsertLogListsBatchResults{ctx: ctx, db: q.db, rows: msgs}
 }
 
+type insertLogListsBatchRow struct {
+	P1   any `json:"p1"`
+	Ord  int `json:"sqlc_ord"`
+	Elem int `json:"sqlc_elem"`
+}
+
+func (b *InsertLogListsBatchResults) jsonRows() []insertLogListsBatchRow {
+	var out []insertLogListsBatchRow
+	for sqlcIdx, msgs := range b.rows {
+		for sqlcI := range duckdbBatchLen(len(msgs)) {
+			out = append(out, insertLogListsBatchRow{
+				P1:   duckdbBatchAt(msgs, sqlcI),
+				Ord:  len(out),
+				Elem: sqlcIdx,
+			})
+		}
+	}
+	return out
+}
+
 func (b *InsertLogListsBatchResults) query(items [][]int64) error {
 	if len(b.rows) == 0 {
 		return nil
 	}
+	all := b.jsonRows()
 	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
-		for sqlcIdx, msgs := range b.rows {
-			sqlcRows, err := db.QueryContext(b.ctx, insertLogLists, duckdbListParam(msgs))
-			if err != nil {
-				return err
+		start := 0
+		for sqlcIdx := range b.rows {
+			end := start
+			for end < len(all) && all[end].Elem == sqlcIdx {
+				end++
 			}
-			for sqlcRows.Next() {
+			if end == start {
+				continue
+			}
+			err := duckdbBatchQueryEach(b.ctx, db, all[start:end], insertLogLists, func(scan func(...any) error) error {
 				var id int64
-				if err := sqlcRows.Scan(&id); err != nil {
-					sqlcRows.Close()
+				if err := scan(&id); err != nil {
 					return err
 				}
 				items[sqlcIdx] = append(items[sqlcIdx], id)
-			}
-			if err := sqlcRows.Close(); err != nil {
+				return nil
+			})
+			if err != nil {
 				return err
 			}
-			if err := sqlcRows.Err(); err != nil {
-				return err
-			}
+			start = end
 		}
 		return nil
 	})
@@ -396,8 +496,115 @@ func (b *InsertLogListsBatchResults) Close() error {
 	return nil
 }
 
+const insertLogPayloads = `-- name: InsertLogPayloads :batchmany
+INSERT INTO log (msg, payload)
+SELECT sqlc_b.p1, sqlc_b.p2 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"JSON","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b
+RETURNING id, payload;
+`
+
+type InsertLogPayloadsBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []InsertLogPayloadsParams
+	closed bool
+}
+
+type InsertLogPayloadsParams struct {
+	Msgs     []string
+	Payloads []json.RawMessage
+}
+
+type InsertLogPayloadsRow struct {
+	ID      int64
+	Payload json.RawMessage
+}
+
+func (q *Queries) InsertLogPayloads(ctx context.Context, arg []InsertLogPayloadsParams) *InsertLogPayloadsBatchResults {
+	return &InsertLogPayloadsBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+type insertLogPayloadsBatchRow struct {
+	P1   any `json:"p1"`
+	P2   any `json:"p2"`
+	Ord  int `json:"sqlc_ord"`
+	Elem int `json:"sqlc_elem"`
+}
+
+func (b *InsertLogPayloadsBatchResults) jsonRows() []insertLogPayloadsBatchRow {
+	var out []insertLogPayloadsBatchRow
+	for sqlcIdx, arg := range b.rows {
+		for sqlcI := range duckdbBatchLen(len(arg.Msgs), len(arg.Payloads)) {
+			out = append(out, insertLogPayloadsBatchRow{
+				P1:   duckdbBatchAt(arg.Msgs, sqlcI),
+				P2:   duckdbBatchAt(arg.Payloads, sqlcI),
+				Ord:  len(out),
+				Elem: sqlcIdx,
+			})
+		}
+	}
+	return out
+}
+
+func (b *InsertLogPayloadsBatchResults) query(items [][]InsertLogPayloadsRow) error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	all := b.jsonRows()
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		start := 0
+		for sqlcIdx := range b.rows {
+			end := start
+			for end < len(all) && all[end].Elem == sqlcIdx {
+				end++
+			}
+			if end == start {
+				continue
+			}
+			err := duckdbBatchQueryEach(b.ctx, db, all[start:end], insertLogPayloads, func(scan func(...any) error) error {
+				var i InsertLogPayloadsRow
+				if err := scan(&i.ID, duckdbJSON(&i.Payload)); err != nil {
+					return err
+				}
+				items[sqlcIdx] = append(items[sqlcIdx], i)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			start = end
+		}
+		return nil
+	})
+}
+
+// Query runs the whole batch in one transaction and calls f once per row
+// with the rows that row returned. When the batch fails, every row gets
+// the error.
+func (b *InsertLogPayloadsBatchResults) Query(f func(int, []InsertLogPayloadsRow, error)) {
+	items := make([][]InsertLogPayloadsRow, len(b.rows))
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.query(items)
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		if err != nil {
+			items[t] = nil
+		}
+		f(t, items[t], err)
+	}
+}
+
+func (b *InsertLogPayloadsBatchResults) Close() error {
+	b.closed = true
+	return nil
+}
+
 const insertLogReturning = `-- name: InsertLogReturning :batchmany
-INSERT INTO log (msg) VALUES ($1) RETURNING id;
+INSERT INTO log (msg) SELECT sqlc_b.p1 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b RETURNING id;
 `
 
 type InsertLogReturningBatchResults struct {
@@ -411,30 +618,51 @@ func (q *Queries) InsertLogReturning(ctx context.Context, msg []string) *InsertL
 	return &InsertLogReturningBatchResults{ctx: ctx, db: q.db, rows: msg}
 }
 
+type insertLogReturningBatchRow struct {
+	P1   string `json:"p1"`
+	Ord  int    `json:"sqlc_ord"`
+	Elem int    `json:"sqlc_elem"`
+}
+
+func (b *InsertLogReturningBatchResults) jsonRows() []insertLogReturningBatchRow {
+	out := make([]insertLogReturningBatchRow, len(b.rows))
+	for sqlcIdx, msg := range b.rows {
+		out[sqlcIdx] = insertLogReturningBatchRow{
+			P1:   msg,
+			Ord:  sqlcIdx,
+			Elem: sqlcIdx,
+		}
+	}
+	return out
+}
+
 func (b *InsertLogReturningBatchResults) query(items [][]int64) error {
 	if len(b.rows) == 0 {
 		return nil
 	}
+	all := b.jsonRows()
 	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
-		for sqlcIdx, msg := range b.rows {
-			sqlcRows, err := db.QueryContext(b.ctx, insertLogReturning, msg)
-			if err != nil {
-				return err
+		start := 0
+		for sqlcIdx := range b.rows {
+			end := start
+			for end < len(all) && all[end].Elem == sqlcIdx {
+				end++
 			}
-			for sqlcRows.Next() {
+			if end == start {
+				continue
+			}
+			err := duckdbBatchQueryEach(b.ctx, db, all[start:end], insertLogReturning, func(scan func(...any) error) error {
 				var id int64
-				if err := sqlcRows.Scan(&id); err != nil {
-					sqlcRows.Close()
+				if err := scan(&id); err != nil {
 					return err
 				}
 				items[sqlcIdx] = append(items[sqlcIdx], id)
-			}
-			if err := sqlcRows.Close(); err != nil {
+				return nil
+			})
+			if err != nil {
 				return err
 			}
-			if err := sqlcRows.Err(); err != nil {
-				return err
-			}
+			start = end
 		}
 		return nil
 	})

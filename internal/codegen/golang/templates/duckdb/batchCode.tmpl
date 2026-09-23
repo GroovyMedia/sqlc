@@ -127,7 +127,34 @@ func (b *{{.MethodName}}BatchResults) query(items [][]{{.Ret.DefineType}}) error
 	if len(b.rows) == 0 {
 		return nil
 	}
-	{{- if .BatchJSON}}
+	{{- if .BatchEach}}
+	all := b.jsonRows()
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		start := 0
+		for sqlcIdx := range b.rows {
+			end := start
+			for end < len(all) && all[end].Elem == sqlcIdx {
+				end++
+			}
+			if end == start {
+				continue
+			}
+			err := duckdbBatchQueryEach(b.ctx, db, all[start:end], {{.ConstantName}}, func(scan func(...any) error) error {
+				var {{.Ret.Name}} {{.Ret.Type}}
+				if err := scan({{.Ret.Scan}}); err != nil {
+					return err
+				}
+				items[sqlcIdx] = append(items[sqlcIdx], {{.Ret.ReturnName}})
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			start = end
+		}
+		return nil
+	})
+	{{- else if .BatchJSON}}
 	return duckdbBatchRead(b.ctx, b.db, b.jsonRows(), {{.ConstantName}}, {{if .Batch.RoundsText}}{{.ConstantName}}Rounds{{else}}""{{end}}, {{.ConstantName}}Read, func(scan func(...any) error) error {
 		var sqlcElem int
 		var {{.Ret.Name}} {{.Ret.Type}}

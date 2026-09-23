@@ -104,7 +104,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 			return nil, queryError(name, err)
 		}
 		batch = plan
-		if plan.Mode == BatchJSON {
+		if plan.Mode != BatchLoop {
 			expanded = write
 			for _, extra := range []string{plan.Rounds, plan.Read} {
 				if extra == "" {

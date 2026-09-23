@@ -31,5 +31,6 @@ CREATE TABLE seen (
 CREATE SEQUENCE log_id_seq;
 CREATE TABLE log (
   id   BIGINT DEFAULT nextval('log_id_seq') NOT NULL,
-  msg  VARCHAR NOT NULL
+  msg  VARCHAR NOT NULL,
+  payload JSON
 );

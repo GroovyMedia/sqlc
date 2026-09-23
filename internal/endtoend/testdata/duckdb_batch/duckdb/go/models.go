@@ -73,8 +73,9 @@ type Keyword struct {
 }
 
 type Log struct {
-	ID  int64
-	Msg string
+	ID      int64
+	Msg     string
+	Payload json.RawMessage
 }
 
 type Seen struct {

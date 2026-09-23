@@ -21,6 +21,10 @@ import (
 // batch with RETURNING, Read reads the rows back by key after the write,
 // with the index of the batch element each came from first.
 //
+// A plain INSERT with RETURNING has no key to read back by, so it runs
+// once per batch element (BatchJSONEach): the element's rows travel as
+// JSON, and every row the statement returns belongs to that element.
+//
 // Any other batch runs its statement once per row (BatchLoop).
 //
 // The row may also come from "SELECT unnest(@a), unnest(@b), ...": each
@@ -35,8 +39,9 @@ type BatchPlan struct {
 }
 
 const (
-	BatchJSON = "json"
-	BatchLoop = "loop"
+	BatchJSON     = "json"
+	BatchJSONEach = "json_each"
+	BatchLoop     = "loop"
 )
 
 // duckdbBatchType is the from_json type of a parameter, and whether the
@@ -88,7 +93,8 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 		return rawSQL, loop, nil
 	}
 	returning := len(b.ReturningItems) > 0
-	if returning && (b.Merge || !b.OnConflict || b.DoNothing) {
+	each := returning && !b.OnConflict && !b.Merge
+	if returning && !each && (b.Merge || b.DoNothing) {
 		return rawSQL, loop, nil
 	}
 	if (b.OnConflict || b.Merge) && len(b.Keys) == 0 {
@@ -102,15 +108,21 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 	}
 	// An unnested placeholder must appear only inside its unnest.
 	unnested := map[int]bool{}
-	for i, n := range b.Unnest {
-		if n == 0 {
+	for _, u := range b.Unnest {
+		unnested[u.Number] = true
+	}
+	for _, p := range b.Params {
+		if !unnested[p.Number] {
 			continue
 		}
-		unnested[n] = true
-		for _, p := range b.Params {
-			if p.Number == n && (p.Start < b.Exprs[i][0] || p.End > b.Exprs[i][1]) {
-				return rawSQL, loop, nil
+		inside := false
+		for _, u := range b.Unnest {
+			if u.Number == p.Number && p.Start >= u.Start && p.End <= u.End {
+				inside = true
 			}
+		}
+		if !inside {
+			return rawSQL, loop, nil
 		}
 	}
 	types := map[int]string{}
@@ -138,30 +150,43 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 	off := raw.StmtLocation
 	text := func(span [2]int) string { return rawSQL[span[0]-off : span[1]-off] }
 
+	// Each expression is rewritten by replacing, left to right, every
+	// unnest(@x) with the JSON column of x and every other placeholder
+	// with its own.
+	type edit struct {
+		start, end int
+		text       string
+	}
+	ref := func(n int) string {
+		if blob[n] {
+			return fmt.Sprintf("from_base64(sqlc_b.p%d)", n)
+		}
+		return fmt.Sprintf("sqlc_b.p%d", n)
+	}
+	var edits []edit
+	for _, u := range b.Unnest {
+		edits = append(edits, edit{u.Start, u.End, ref(u.Number)})
+	}
+	for _, p := range b.Params {
+		if !unnested[p.Number] {
+			edits = append(edits, edit{p.Start, p.End, ref(p.Number)})
+		}
+	}
+	sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
 	exprs := make([]string, len(b.Exprs))
 	for i, span := range b.Exprs {
 		var sb strings.Builder
 		at := span[0]
-		for _, p := range b.Params {
-			if p.Start < span[0] || p.End > span[1] {
+		for _, e := range edits {
+			if e.start < span[0] || e.end > span[1] {
 				continue
 			}
-			sb.WriteString(text([2]int{at, p.Start}))
-			ref := fmt.Sprintf("sqlc_b.p%d", p.Number)
-			if blob[p.Number] {
-				ref = "from_base64(" + ref + ")"
-			}
-			sb.WriteString(ref)
-			at = p.End
+			sb.WriteString(text([2]int{at, e.start}))
+			sb.WriteString(e.text)
+			at = e.end
 		}
 		sb.WriteString(text([2]int{at, span[1]}))
 		exprs[i] = sb.String()
-		if i < len(b.Unnest) && b.Unnest[i] != 0 {
-			exprs[i] = fmt.Sprintf("sqlc_b.p%d", b.Unnest[i])
-			if blob[b.Unnest[i]] {
-				exprs[i] = "from_base64(" + exprs[i] + ")"
-			}
-		}
 	}
 
 	var keys []string
@@ -193,6 +218,9 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 
 	sel := "SELECT " + strings.Join(exprs, ", ") + " FROM " + source
 	plan := &BatchPlan{Mode: BatchJSON}
+	if each {
+		plan.Mode = BatchJSONEach
+	}
 	for n := range unnested {
 		plan.Unnest = append(plan.Unnest, n)
 	}
@@ -204,7 +232,7 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 	}
 
 	write := rawSQL[:b.Values[0]-off] + sel
-	if returning {
+	if returning && !each {
 		write += rawSQL[b.Values[1]-off:b.Returning[0]-off] + rawSQL[b.Returning[1]-off:]
 		var items []string
 		for i, span := range b.ReturningItems {

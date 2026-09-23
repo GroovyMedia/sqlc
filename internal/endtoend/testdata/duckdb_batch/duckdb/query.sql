@@ -53,3 +53,13 @@ RETURNING ad_id, ct;
 INSERT INTO daily (day, source, status, seen_at)
 SELECT unnest(@days::DATE[]), unnest(@sources::VARCHAR[]), 'paused'::status, unnest(@seen::TIMESTAMPTZ[])
 ON CONFLICT (day, source) DO UPDATE SET status = EXCLUDED.status, seen_at = EXCLUDED.seen_at;
+
+-- name: BulkSetStatus :batchexec
+INSERT INTO daily (day, source, status)
+SELECT unnest(@days::DATE[]), unnest(@sources::VARCHAR[]), unnest(@statuses::TEXT[])::status
+ON CONFLICT (day, source) DO UPDATE SET status = EXCLUDED.status;
+
+-- name: InsertLogPayloads :batchmany
+INSERT INTO log (msg, payload)
+SELECT unnest(@msgs::VARCHAR[]), unnest(@payloads::JSON[])
+RETURNING id, payload;

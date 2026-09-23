@@ -39,10 +39,10 @@ func (c *cc) batchValues(row []dw.Expr, span [2]int) *ast.BatchSource {
 	return b
 }
 
-// unnestSelect is the select list of a "SELECT unnest(@a), unnest(@b), ..."
-// with no FROM, and the span of that SELECT. unnest[i] is the placeholder
-// the i-th item unnests (the placeholder, or a cast of it), or 0.
-func unnestSelect(sel *dw.SelectStatement) ([]dw.Expr, [2]int, []int, bool) {
+// unnestSelect is the select list of a "SELECT ..., unnest(@a), ..." with
+// no FROM, the span of that SELECT, and each unnest of a placeholder (or of
+// a cast of one) the list holds. An unnest of anything else is refused.
+func unnestSelect(sel *dw.SelectStatement) ([]dw.Expr, [2]int, []ast.BatchParam, bool) {
 	if sel == nil {
 		return nil, [2]int{}, nil, false
 	}
@@ -53,25 +53,32 @@ func unnestSelect(sel *dw.SelectStatement) ([]dw.Expr, [2]int, []int, bool) {
 	if _, empty := node.FromTable.(*dw.EmptyTableRef); node.FromTable != nil && !empty {
 		return nil, [2]int{}, nil, false
 	}
-	unnest := make([]int, len(node.SelectList))
-	found := false
-	for i, e := range node.SelectList {
-		fn, ok := e.(*dw.FunctionExpression)
-		if !ok || !strings.EqualFold(fn.FunctionName, "unnest") || len(fn.Arguments) != 1 {
-			continue
-		}
-		arg := fn.Arguments[0].Expr
-		if cast, ok := arg.(*dw.CastExpression); ok {
-			arg = cast.Child
-		}
-		p, ok := arg.(*dw.ParameterExpression)
-		if !ok {
-			return nil, [2]int{}, nil, false
-		}
-		unnest[i] = p.Number
-		found = true
+	var unnest []ast.BatchParam
+	ok = true
+	for _, e := range node.SelectList {
+		walkDW(e, func(n dw.Node) {
+			fn, isFn := n.(*dw.FunctionExpression)
+			if !isFn || !strings.EqualFold(fn.FunctionName, "unnest") {
+				return
+			}
+			if len(fn.Arguments) != 1 {
+				ok = false
+				return
+			}
+			arg := fn.Arguments[0].Expr
+			if cast, isCast := arg.(*dw.CastExpression); isCast {
+				arg = cast.Child
+			}
+			p, isParam := arg.(*dw.ParameterExpression)
+			if !isParam {
+				ok = false
+				return
+			}
+			span := fullSpan(fn)
+			unnest = append(unnest, ast.BatchParam{Start: span[0], End: span[1], Number: p.Number})
+		})
 	}
-	if !found {
+	if !ok || len(unnest) == 0 {
 		return nil, [2]int{}, nil, false
 	}
 	return node.SelectList, fullSpan(node), unnest, true
@@ -79,7 +86,7 @@ func unnestSelect(sel *dw.SelectStatement) ([]dw.Expr, [2]int, []int, bool) {
 
 func (c *cc) insertBatch(n *dw.InsertStatement) *ast.BatchSource {
 	row, span, ok := singleValues(n.Query)
-	var unnest []int
+	var unnest []ast.BatchParam
 	if !ok {
 		row, span, unnest, ok = unnestSelect(n.Query)
 	}

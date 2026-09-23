@@ -391,6 +391,29 @@ func duckdbBatchRead(ctx context.Context, db DBTX, rows any, write, rounds, read
 	})
 }
 
+// duckdbBatchQueryEach runs a statement over one batch element's rows and
+// hands scan every row it returns.
+func duckdbBatchQueryEach(ctx context.Context, db DBTX, rows any, query string, scan func(func(...any) error) error) error {
+	blob, err := json.Marshal(rows)
+	if err != nil {
+		return err
+	}
+	res, err := db.QueryContext(ctx, query, string(blob))
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+	for res.Next() {
+		if err := scan(res.Scan); err != nil {
+			return err
+		}
+	}
+	if err := res.Close(); err != nil {
+		return err
+	}
+	return res.Err()
+}
+
 var duckdbErrNoRows = sql.ErrNoRows
 
 // duckdbBatchLen is the number of rows a batch element unnests to: the

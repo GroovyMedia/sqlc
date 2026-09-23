@@ -12,11 +12,11 @@ type BatchSource struct {
 	Exprs  [][2]int `json:"exprs"`
 	// Params spans each placeholder inside Exprs, with its number.
 	Params []BatchParam `json:"params"`
-	// Unnest is set when the row comes from "SELECT unnest(@a), unnest(@b),
-	// ..." rather than VALUES: Values then spans that SELECT, and Unnest[i]
-	// is the placeholder number the i-th item unnests, or 0 for an item
-	// that is not an unnest.
-	Unnest []int `json:"unnest,omitempty"`
+	// Unnest lists each "unnest(@x)" (or unnest of a cast of @x) the row
+	// expressions hold. It is set when the row comes from "SELECT
+	// unnest(@a), unnest(@b), ..." rather than VALUES; Values then spans
+	// that SELECT.
+	Unnest []BatchParam `json:"unnest,omitempty"`
 	// Columns names each expression: the INSERT column list, or the column
 	// aliases of the MERGE source. Empty for an INSERT with no column list.
 	Columns []string `json:"columns"`
