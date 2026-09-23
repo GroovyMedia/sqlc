@@ -67,6 +67,8 @@ func batchFields(gq Query, query *plugin.Query) ([]BatchField, error) {
 			helper = "duckdbBatchTimestamptz"
 		}
 		switch {
+		case !p.array && isFloatType(p.dbType):
+			f.Type, f.Value = "any", "duckdbBatchFloat("+p.expr+")"
 		case helper != "":
 			switch p.typ {
 			case "time.Time":
@@ -112,6 +114,8 @@ func unnestField(number int32, typ, expr, dbType string) (BatchField, error) {
 		helper = "duckdbBatchTimestamptz"
 	}
 	switch {
+	case isFloatType(dbType):
+		f.Value = "duckdbBatchAtWith(" + expr + ", sqlcI, duckdbBatchFloat[" + elem + "])"
 	case helper != "" && elem == "time.Time":
 		f.Value = "duckdbBatchAtWith(" + expr + ", sqlcI, " + helper + ")"
 	case helper != "" && elem == "*time.Time":
@@ -124,4 +128,13 @@ func unnestField(number int32, typ, expr, dbType string) (BatchField, error) {
 		return f, fmt.Errorf("batch: parameter %d: unnest of %s is not supported", number, typ)
 	}
 	return f, nil
+}
+
+// isFloatType is a type the compiler sends as text and casts back.
+func isFloatType(dbType string) bool {
+	switch strings.ToLower(dbType) {
+	case "float", "float4", "real", "double", "float8", "double precision":
+		return true
+	}
+	return false
 }

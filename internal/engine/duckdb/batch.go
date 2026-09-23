@@ -108,6 +108,22 @@ func (c *cc) insertBatch(n *dw.InsertStatement) *ast.BatchSource {
 		b.Keys = oc.IndexedColumns
 	}
 	c.batchReturning(b, n.Returning)
+	return onlyRowParams(n, b)
+}
+
+// onlyRowParams is b, or nil when a placeholder appears outside the row
+// expressions (in a SET, a WHERE, a MERGE arm, RETURNING, a CTE): the
+// rewrite would leave it bound to the JSON array or the round.
+func onlyRowParams(n dw.Node, b *ast.BatchSource) *ast.BatchSource {
+	count := 0
+	walkDW(n, func(node dw.Node) {
+		if _, ok := node.(*dw.ParameterExpression); ok {
+			count++
+		}
+	})
+	if count != len(b.Params) {
+		return nil
+	}
 	return b
 }
 
@@ -123,23 +139,117 @@ func (c *cc) mergeBatch(n *dw.MergeIntoStatement) *ast.BatchSource {
 	b := c.batchValues(row, span)
 	b.Merge = true
 	b.Columns = src.ColumnNameAlias
-	if len(n.UsingColumns) > 0 {
-		b.Keys = n.UsingColumns
-	} else if src.Alias != "" {
-		seen := map[string]bool{}
-		walkDW(n.JoinCondition, func(node dw.Node) {
-			ref, ok := node.(*dw.ColumnRefExpression)
-			if !ok || len(ref.ColumnNames) != 2 || !strings.EqualFold(ref.ColumnNames[0], src.Alias) {
-				return
-			}
-			if name := ref.ColumnNames[1]; !seen[name] {
-				seen[name] = true
-				b.Keys = append(b.Keys, name)
-			}
-		})
+	b.Keys = mergeKeys(n, src.Alias)
+	if b.Keys == nil {
+		return nil
 	}
 	c.batchReturning(b, n.Returning)
-	return b
+	return onlyRowParams(n, b)
+}
+
+// mergeKeys is the source columns the rounds split on, or nil when the
+// MERGE does not fit the rounds. Two rows can then touch the same target
+// row only when their keys are equal: ON is an AND of "t.x = s.y", each
+// arm that inserts writes s.y into x, and no UPDATE sets x. A WHEN NOT
+// MATCHED BY SOURCE arm would, in a later round, delete what an earlier
+// one wrote.
+func mergeKeys(n *dw.MergeIntoStatement, alias string) []string {
+	pairs := map[string]string{} // target column -> source column
+	var keys []string
+	if len(n.UsingColumns) > 0 {
+		for _, col := range n.UsingColumns {
+			pairs[strings.ToLower(col)] = col
+			keys = append(keys, col)
+		}
+	} else {
+		if alias == "" || !mergeOn(n.JoinCondition, alias, pairs, &keys) {
+			return nil
+		}
+	}
+	isSource := func(e dw.Expr, col string) bool {
+		ref, ok := e.(*dw.ColumnRefExpression)
+		if !ok {
+			return false
+		}
+		names := ref.ColumnNames
+		if len(names) == 2 && !strings.EqualFold(names[0], alias) {
+			return false
+		}
+		return (len(names) == 1 || len(names) == 2) && strings.EqualFold(names[len(names)-1], col)
+	}
+	for _, a := range n.Actions {
+		if a.Kind == dw.MergeWhenNotMatchedBySource {
+			return nil
+		}
+		switch a.Action {
+		case dw.MergeUpdate:
+			if a.SetInfo == nil {
+				return nil
+			}
+			for _, path := range a.SetInfo.Columns {
+				if _, key := pairs[strings.ToLower(path[0])]; key {
+					return nil
+				}
+			}
+		case dw.MergeInsert:
+			if len(a.Columns) != len(a.Expressions) {
+				return nil
+			}
+			for tcol, scol := range pairs {
+				found := false
+				for i, col := range a.Columns {
+					if strings.EqualFold(col, tcol) {
+						found = isSource(a.Expressions[i], scol)
+					}
+				}
+				if !found {
+					return nil
+				}
+			}
+		}
+	}
+	return keys
+}
+
+// mergeOn fills pairs and keys from an ON that is an AND of equalities
+// between a target column and a source column, and reports false for any
+// other ON.
+func mergeOn(e dw.Expr, alias string, pairs map[string]string, keys *[]string) bool {
+	switch e := e.(type) {
+	case *dw.ConjunctionExpression:
+		if e.Type != dw.ConjunctionAnd {
+			return false
+		}
+		for _, op := range e.Operands {
+			if !mergeOn(op, alias, pairs, keys) {
+				return false
+			}
+		}
+		return true
+	case *dw.ComparisonExpression:
+		if e.Type != dw.CompareEqual {
+			return false
+		}
+		l, lok := e.Left.(*dw.ColumnRefExpression)
+		r, rok := e.Right.(*dw.ColumnRefExpression)
+		if !lok || !rok || len(l.ColumnNames) != 2 || len(r.ColumnNames) != 2 {
+			return false
+		}
+		if strings.EqualFold(l.ColumnNames[0], alias) {
+			l, r = r, l
+		}
+		if strings.EqualFold(l.ColumnNames[0], alias) || !strings.EqualFold(r.ColumnNames[0], alias) {
+			return false
+		}
+		tcol, scol := strings.ToLower(l.ColumnNames[1]), r.ColumnNames[1]
+		if prev, ok := pairs[tcol]; ok && !strings.EqualFold(prev, scol) {
+			return false
+		}
+		pairs[tcol] = scol
+		*keys = append(*keys, scol)
+		return true
+	}
+	return false
 }
 
 // batchReturning records the RETURNING clause: from its keyword, which the

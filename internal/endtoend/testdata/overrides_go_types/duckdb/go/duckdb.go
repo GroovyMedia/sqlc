@@ -11,8 +11,10 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -433,15 +435,16 @@ func duckdbBatchAtWith[T, U any](l []T, i int, f func(T) U) any {
 	return nil
 }
 
-// A DATE travels as the calendar day of the value in its own location, a
-// TIMESTAMP as its UTC wall clock, and a TIMESTAMPTZ as the instant. The
+// A DATE travels as the UTC calendar day of the value and a TIMESTAMP as
+// its UTC wall clock, as the driver binds a time.Time outside a batch; a
+// TIMESTAMPTZ travels as the instant. The
 // zero time travels as NULL, as an unset date or time did through pgx.
 
 func duckdbBatchDate(t time.Time) *string {
 	if t.IsZero() {
 		return nil
 	}
-	s := t.Format("2006-01-02")
+	s := t.UTC().Format("2006-01-02")
 	return &s
 }
 
@@ -511,6 +514,39 @@ func duckdbBatchJSON[T ~[]byte](m T) *string {
 	}
 	s := string(m)
 	return &s
+}
+
+// duckdbBatchFloat is a float as the text DuckDB parses back to the same
+// value: JSON has no number for NaN or the infinities. A pointer, a
+// sql.Null or other driver.Valuer stands for its value; nil is SQL NULL.
+func duckdbBatchFloat[T any](v T) any {
+	var x any = v
+	if vr, ok := x.(driver.Valuer); ok {
+		var err error
+		if x, err = vr.Value(); err != nil {
+			return duckdbBatchErr{err}
+		}
+	}
+	rv := reflect.ValueOf(x)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Float32 && rv.Kind() != reflect.Float64 {
+		return x
+	}
+	switch f := rv.Float(); {
+	case math.IsNaN(f):
+		return "NaN"
+	case math.IsInf(f, 1):
+		return "Infinity"
+	case math.IsInf(f, -1):
+		return "-Infinity"
+	default:
+		return strconv.FormatFloat(f, 'g', -1, 64)
+	}
 }
 
 // duckdbBatchValuer is the value a sql.Null type or other driver.Valuer

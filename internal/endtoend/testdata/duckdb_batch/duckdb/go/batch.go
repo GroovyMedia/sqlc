@@ -85,9 +85,13 @@ func (b *AddSeenBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *AddSeenBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
 }
 
 const bulkPauseDaily = `-- name: BulkPauseDaily :batchexec
@@ -162,9 +166,95 @@ func (b *BulkPauseDailyBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *BulkPauseDailyBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
+}
+
+const bulkSetRevenue = `-- name: BulkSetRevenue :batchexec
+INSERT INTO daily (day, source, revenue)
+SELECT sqlc_b.p1, sqlc_b.p2, (sqlc_b.p3)::DOUBLE FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
+ON CONFLICT (day, source) DO UPDATE SET revenue = EXCLUDED.revenue;
+`
+
+const bulkSetRevenueRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
+
+type BulkSetRevenueBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []BulkSetRevenueParams
+	closed bool
+}
+
+type BulkSetRevenueParams struct {
+	Days     []time.Time
+	Sources  []string
+	Revenues []float64
+}
+
+// A float travels as text, so NaN and the infinities survive.
+func (q *Queries) BulkSetRevenue(ctx context.Context, arg []BulkSetRevenueParams) *BulkSetRevenueBatchResults {
+	return &BulkSetRevenueBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+type bulkSetRevenueBatchRow struct {
+	P1   any `json:"p1"`
+	P2   any `json:"p2"`
+	P3   any `json:"p3"`
+	Ord  int `json:"sqlc_ord"`
+	Elem int `json:"sqlc_elem"`
+}
+
+func (b *BulkSetRevenueBatchResults) jsonRows() []bulkSetRevenueBatchRow {
+	var out []bulkSetRevenueBatchRow
+	for sqlcIdx, arg := range b.rows {
+		for sqlcI := range duckdbBatchLen(len(arg.Days), len(arg.Sources), len(arg.Revenues)) {
+			out = append(out, bulkSetRevenueBatchRow{
+				P1:   duckdbBatchAtWith(arg.Days, sqlcI, duckdbBatchDate),
+				P2:   duckdbBatchAt(arg.Sources, sqlcI),
+				P3:   duckdbBatchAtWith(arg.Revenues, sqlcI, duckdbBatchFloat[float64]),
+				Ord:  len(out),
+				Elem: sqlcIdx,
+			})
+		}
+	}
+	return out
+}
+
+func (b *BulkSetRevenueBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbBatchWrite(b.ctx, b.db, b.jsonRows(), bulkSetRevenue, bulkSetRevenueRounds)
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *BulkSetRevenueBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *BulkSetRevenueBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
 }
 
 const bulkSetStatus = `-- name: BulkSetStatus :batchexec
@@ -239,9 +329,13 @@ func (b *BulkSetStatusBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *BulkSetStatusBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
 }
 
 const bulkUpsertSeen = `-- name: BulkUpsertSeen :batchmany
@@ -253,7 +347,7 @@ ON CONFLICT (ad_id, day) DO UPDATE SET ct = EXCLUDED.ct
 
 const bulkUpsertSeenRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"DATE","p3":"INTEGER","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
 
-const bulkUpsertSeenRead = `SELECT sqlc_b.sqlc_elem, ad_id, ct FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"DATE","p3":"INTEGER","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN seen ON seen.ad_id IS NOT DISTINCT FROM (sqlc_b.p1) AND seen.day IS NOT DISTINCT FROM (sqlc_b.p2) ORDER BY sqlc_b.sqlc_ord`
+const bulkUpsertSeenRead = `SELECT sqlc_b.sqlc_elem, ad_id, ct FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"DATE","p3":"INTEGER","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN seen ON seen.ad_id = (sqlc_b.p1) AND seen.day = (sqlc_b.p2) ORDER BY sqlc_b.sqlc_ord`
 
 type BulkUpsertSeenBatchResults struct {
 	ctx    context.Context
@@ -337,9 +431,165 @@ func (b *BulkUpsertSeenBatchResults) Query(f func(int, []BulkUpsertSeenRow, erro
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *BulkUpsertSeenBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]BulkUpsertSeenRow, len(b.rows)))
+}
+
+const countTag = `-- name: CountTag :batchexec
+INSERT INTO tags (name, hits) SELECT sqlc_b.p1, 1 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1 ORDER BY sqlc_b.sqlc_ord) = $2
+ON CONFLICT (name) DO UPDATE SET hits = tags.hits + 1;
+`
+
+const countTagRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1)`
+
+type CountTagBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []*string
+	closed bool
+}
+
+// Each row whose key is NULL gets a round of its own: one INSERT ... ON
+// CONFLICT keeps only one of several NULL-key rows.
+func (q *Queries) CountTag(ctx context.Context, name []*string) *CountTagBatchResults {
+	return &CountTagBatchResults{ctx: ctx, db: q.db, rows: name}
+}
+
+type countTagBatchRow struct {
+	P1   *string `json:"p1"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
+}
+
+func (b *CountTagBatchResults) jsonRows() []countTagBatchRow {
+	out := make([]countTagBatchRow, len(b.rows))
+	for sqlcIdx, name := range b.rows {
+		out[sqlcIdx] = countTagBatchRow{
+			P1:   name,
+			Ord:  sqlcIdx,
+			Elem: sqlcIdx,
+		}
+	}
+	return out
+}
+
+func (b *CountTagBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbBatchWrite(b.ctx, b.db, b.jsonRows(), countTag, countTagRounds)
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *CountTagBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *CountTagBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
+}
+
+const hitTag = `-- name: HitTag :batchone
+INSERT INTO tags (name, hits) VALUES ($1, 1)
+ON CONFLICT (name) DO UPDATE SET hits = tags.hits + 1
+RETURNING id;
+`
+
+type HitTagBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []*string
+	closed bool
+}
+
+// A nullable key cannot be read back by key: runs row by row.
+func (q *Queries) HitTag(ctx context.Context, name []*string) *HitTagBatchResults {
+	return &HitTagBatchResults{ctx: ctx, db: q.db, rows: name}
+}
+
+func (b *HitTagBatchResults) query(items [][]int64) error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for sqlcIdx, name := range b.rows {
+			sqlcRows, err := db.QueryContext(b.ctx, hitTag, name)
+			if err != nil {
+				return err
+			}
+			for sqlcRows.Next() {
+				var id int64
+				if err := sqlcRows.Scan(&id); err != nil {
+					sqlcRows.Close()
+					return err
+				}
+				items[sqlcIdx] = append(items[sqlcIdx], id)
+			}
+			if err := sqlcRows.Close(); err != nil {
+				return err
+			}
+			if err := sqlcRows.Err(); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// QueryRow runs the whole batch in one transaction and calls f once per
+// row with the row it returned. When the batch fails, every row gets the
+// error.
+func (b *HitTagBatchResults) QueryRow(f func(int, int64, error)) {
+	items := make([][]int64, len(b.rows))
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.query(items)
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		var id int64
+		switch {
+		case err != nil:
+			f(t, id, err)
+		case len(items[t]) == 0:
+			f(t, id, duckdbErrNoRows)
+		default:
+			f(t, items[t][0], nil)
+		}
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *HitTagBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.query(make([][]int64, len(b.rows)))
 }
 
 const insertLog = `-- name: InsertLog :batchexec
@@ -398,9 +648,13 @@ func (b *InsertLogBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *InsertLogBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
 }
 
 const insertLogLists = `-- name: InsertLogLists :batchmany
@@ -491,9 +745,73 @@ func (b *InsertLogListsBatchResults) Query(f func(int, []int64, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *InsertLogListsBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]int64, len(b.rows)))
+}
+
+const insertLogPayloadList = `-- name: InsertLogPayloadList :batchexec
+INSERT INTO log (msg, payloads) VALUES ($1, $2);
+`
+
+type InsertLogPayloadListBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []InsertLogPayloadListParams
+	closed bool
+}
+
+type InsertLogPayloadListParams struct {
+	Msg      string
+	Payloads []json.RawMessage
+}
+
+// A JSON[] would lose which elements are strings: runs row by row.
+func (q *Queries) InsertLogPayloadList(ctx context.Context, arg []InsertLogPayloadListParams) *InsertLogPayloadListBatchResults {
+	return &InsertLogPayloadListBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+func (b *InsertLogPayloadListBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for _, arg := range b.rows {
+			if _, err := db.ExecContext(b.ctx, insertLogPayloadList, arg.Msg, duckdbListParam(arg.Payloads)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *InsertLogPayloadListBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *InsertLogPayloadListBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
 }
 
 const insertLogPayloads = `-- name: InsertLogPayloads :batchmany
@@ -598,9 +916,13 @@ func (b *InsertLogPayloadsBatchResults) Query(f func(int, []InsertLogPayloadsRow
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *InsertLogPayloadsBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]InsertLogPayloadsRow, len(b.rows)))
 }
 
 const insertLogReturning = `-- name: InsertLogReturning :batchmany
@@ -689,9 +1011,76 @@ func (b *InsertLogReturningBatchResults) Query(f func(int, []int64, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *InsertLogReturningBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]int64, len(b.rows)))
+}
+
+const mergeKeywordLower = `-- name: MergeKeywordLower :batchexec
+MERGE INTO keywords t
+USING (VALUES ($1::VARCHAR, $2::TIMESTAMPTZ)) AS s(keyword, seen)
+ON lower(t.keyword) = lower(s.keyword)
+WHEN MATCHED THEN UPDATE SET last_seen = s.seen;
+`
+
+type MergeKeywordLowerBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []MergeKeywordLowerParams
+	closed bool
+}
+
+type MergeKeywordLowerParams struct {
+	Keyword string
+	Seen    time.Time
+}
+
+// ON compares expressions, not columns: runs row by row.
+func (q *Queries) MergeKeywordLower(ctx context.Context, arg []MergeKeywordLowerParams) *MergeKeywordLowerBatchResults {
+	return &MergeKeywordLowerBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+func (b *MergeKeywordLowerBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for _, arg := range b.rows {
+			if _, err := db.ExecContext(b.ctx, mergeKeywordLower, arg.Keyword, arg.Seen); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *MergeKeywordLowerBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *MergeKeywordLowerBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
 }
 
 const mergeSeen = `-- name: MergeSeen :batchexec
@@ -766,14 +1155,145 @@ func (b *MergeSeenBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *MergeSeenBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
+}
+
+const mergeSeenPrune = `-- name: MergeSeenPrune :batchexec
+MERGE INTO seen
+USING (VALUES ($1::BIGINT, $2::DATE, $3::INTEGER)) AS s(ad_id, day, ct)
+ON seen.ad_id = s.ad_id AND seen.day = s.day
+WHEN MATCHED THEN UPDATE SET ct = s.ct
+WHEN NOT MATCHED BY SOURCE THEN DELETE;
+`
+
+type MergeSeenPruneBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []MergeSeenPruneParams
+	closed bool
+}
+
+type MergeSeenPruneParams struct {
+	AdID int64
+	Day  time.Time
+	Ct   int32
+}
+
+// WHEN NOT MATCHED BY SOURCE would undo earlier rounds: runs row by row.
+func (q *Queries) MergeSeenPrune(ctx context.Context, arg []MergeSeenPruneParams) *MergeSeenPruneBatchResults {
+	return &MergeSeenPruneBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+func (b *MergeSeenPruneBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for _, arg := range b.rows {
+			if _, err := db.ExecContext(b.ctx, mergeSeenPrune, arg.AdID, arg.Day, arg.Ct); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *MergeSeenPruneBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *MergeSeenPruneBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
+}
+
+const setSeen = `-- name: SetSeen :batchexec
+INSERT INTO seen (ad_id, day, ct) VALUES ($1, $2, $3)
+ON CONFLICT (ad_id, day) DO UPDATE SET ct = $3;
+`
+
+type SetSeenBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []SetSeenParams
+	closed bool
+}
+
+type SetSeenParams struct {
+	AdID int64
+	Day  time.Time
+	Ct   int32
+}
+
+// A placeholder outside the VALUES row: runs row by row.
+func (q *Queries) SetSeen(ctx context.Context, arg []SetSeenParams) *SetSeenBatchResults {
+	return &SetSeenBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+func (b *SetSeenBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for _, arg := range b.rows {
+			if _, err := db.ExecContext(b.ctx, setSeen, arg.AdID, arg.Day, arg.Ct); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *SetSeenBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+// Close runs the batch if nothing has run it yet, and returns its error.
+func (b *SetSeenBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	return b.run()
 }
 
 const upsertDaily = `-- name: UpsertDaily :batchexec
 INSERT INTO daily (day, source, clicks, revenue, tags, meta, status, seen_at)
-SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3, sqlc_b.p4, sqlc_b.p5, (sqlc_b.p6)::JSON, sqlc_b.p7, sqlc_b.p8 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
+SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3, (sqlc_b.p4)::DOUBLE, sqlc_b.p5, (sqlc_b.p6)::JSON, sqlc_b.p7, sqlc_b.p8 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"VARCHAR","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
 ON CONFLICT (day, source) DO UPDATE SET
     clicks  = EXCLUDED.clicks,
     revenue = EXCLUDED.revenue,
@@ -783,7 +1303,7 @@ ON CONFLICT (day, source) DO UPDATE SET
     seen_at = EXCLUDED.seen_at;
 `
 
-const upsertDailyRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
+const upsertDailyRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"VARCHAR","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
 
 type UpsertDailyBatchResults struct {
 	ctx    context.Context
@@ -811,7 +1331,7 @@ type upsertDailyBatchRow struct {
 	P1   *string  `json:"p1"`
 	P2   string   `json:"p2"`
 	P3   *int64   `json:"p3"`
-	P4   *float64 `json:"p4"`
+	P4   any      `json:"p4"`
 	P5   []string `json:"p5"`
 	P6   *string  `json:"p6"`
 	P7   *Status  `json:"p7"`
@@ -827,7 +1347,7 @@ func (b *UpsertDailyBatchResults) jsonRows() []upsertDailyBatchRow {
 			P1:   duckdbBatchDate(arg.Day),
 			P2:   arg.Source,
 			P3:   arg.Clicks,
-			P4:   arg.Revenue,
+			P4:   duckdbBatchFloat(arg.Revenue),
 			P5:   arg.Tags,
 			P6:   duckdbBatchJSON(arg.Meta),
 			P7:   arg.Status,
@@ -862,9 +1382,13 @@ func (b *UpsertDailyBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *UpsertDailyBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
 }
 
 const upsertKeyword = `-- name: UpsertKeyword :batchone
@@ -876,7 +1400,7 @@ ON CONFLICT (keyword_lower) DO UPDATE SET last_seen = EXCLUDED.last_seen
 
 const upsertKeywordRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY lower(sqlc_b.p1))`
 
-const upsertKeywordRead = `SELECT sqlc_b.sqlc_elem, keywords.* FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN keywords ON keywords.keyword_lower IS NOT DISTINCT FROM (lower(sqlc_b.p1)) ORDER BY sqlc_b.sqlc_ord`
+const upsertKeywordRead = `SELECT sqlc_b.sqlc_elem, keywords.* FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN keywords ON keywords.keyword_lower = (lower(sqlc_b.p1)) ORDER BY sqlc_b.sqlc_ord`
 
 type UpsertKeywordBatchResults struct {
 	ctx    context.Context
@@ -961,9 +1485,13 @@ func (b *UpsertKeywordBatchResults) QueryRow(f func(int, Keyword, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *UpsertKeywordBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]Keyword, len(b.rows)))
 }
 
 const upsertKeywords = `-- name: UpsertKeywords :batchmany
@@ -977,7 +1505,7 @@ ON CONFLICT (keyword_lower) DO UPDATE SET
 
 const upsertKeywordsRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY lower(sqlc_b.p1))`
 
-const upsertKeywordsRead = `SELECT sqlc_b.sqlc_elem, id FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN keywords ON keywords.keyword_lower IS NOT DISTINCT FROM (lower(sqlc_b.p1)) ORDER BY sqlc_b.sqlc_ord`
+const upsertKeywordsRead = `SELECT sqlc_b.sqlc_elem, id FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b JOIN keywords ON keywords.keyword_lower = (lower(sqlc_b.p1)) ORDER BY sqlc_b.sqlc_ord`
 
 type UpsertKeywordsBatchResults struct {
 	ctx    context.Context
@@ -1051,9 +1579,13 @@ func (b *UpsertKeywordsBatchResults) Query(f func(int, []int64, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *UpsertKeywordsBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.query(make([][]int64, len(b.rows)))
 }
 
 const upsertMetric = `-- name: UpsertMetric :batchexec
@@ -1125,7 +1657,11 @@ func (b *UpsertMetricBatchResults) Exec(f func(int, error)) {
 	}
 }
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *UpsertMetricBatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	return b.run()
 }

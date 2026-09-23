@@ -73,9 +73,10 @@ type Keyword struct {
 }
 
 type Log struct {
-	ID      int64
-	Msg     string
-	Payload json.RawMessage
+	ID       int64
+	Msg      string
+	Payload  json.RawMessage
+	Payloads []json.RawMessage
 }
 
 type Metric struct {
@@ -88,4 +89,10 @@ type Seen struct {
 	AdID int64
 	Day  time.Time
 	Ct   int32
+}
+
+type Tag struct {
+	ID   int64
+	Name *string
+	Hits int32
 }

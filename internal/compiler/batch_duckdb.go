@@ -47,14 +47,17 @@ const (
 // duckdbBatchType is the from_json type of a parameter, and how the SQL
 // turns the JSON field back into the value: a BLOB travels as base64 text,
 // and a JSON value as its text, so that a JSON null stays a JSON null and
-// only a missing value is SQL NULL. ok is false for a type the JSON form
-// does not carry; such a batch runs row by row.
+// only a missing value is SQL NULL. A float travels as its text, which
+// holds NaN and the infinities that JSON has no number for. ok is false for
+// a type the JSON form does not carry; such a batch runs row by row. A
+// JSON[] is one: the JSON form would lose which elements are strings.
 func duckdbBatchType(col *Column) (typ string, wrap string, ok bool) {
 	name := strings.ToLower(col.DataType)
 	if col.TypeExpr != nil && col.TypeExpr.IsArray() {
 		inner := col.TypeExpr.Innermost()
 		switch strings.ToLower(inner.Name) {
-		case "date", "timestamp", "timestamp with time zone", "timestamptz", "blob", "bytea", "decimal", "numeric":
+		case "date", "timestamp", "timestamp with time zone", "timestamptz", "blob", "bytea", "decimal", "numeric",
+			"json", "float", "float4", "real", "double", "float8", "double precision":
 			return "", "", false
 		}
 		elem, _, ok := duckdbBatchType(&Column{DataType: inner.Name})
@@ -65,11 +68,15 @@ func duckdbBatchType(col *Column) (typ string, wrap string, ok bool) {
 	}
 	switch name {
 	case "boolean", "bool", "tinyint", "smallint", "integer", "int", "bigint", "hugeint",
-		"utinyint", "usmallint", "uinteger", "ubigint", "uhugeint", "float", "real", "double",
+		"utinyint", "usmallint", "uinteger", "ubigint", "uhugeint",
 		"varchar", "text", "string", "uuid", "date", "timestamp":
 		return strings.ToUpper(name), "", true
 	case "json":
 		return "VARCHAR", "(%s)::JSON", true
+	case "float", "float4", "real":
+		return "VARCHAR", "(%s)::FLOAT", true
+	case "double", "float8", "double precision":
+		return "VARCHAR", "(%s)::DOUBLE", true
 	case "timestamp with time zone", "timestamptz":
 		return "TIMESTAMP WITH TIME ZONE", "", true
 	case "blob", "bytea":
@@ -83,8 +90,9 @@ func duckdbBatchType(col *Column) (typ string, wrap string, ok bool) {
 
 // planDuckDBBatch rewrites a :batch statement for the JSON form. It returns
 // the statement to run and the plan, or a BatchLoop plan and the original
-// text when the statement does not fit the JSON form.
-func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (string, *BatchPlan, error) {
+// text when the statement does not fit the JSON form. notNull reports
+// whether a column of the target refuses NULL.
+func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter, notNull func(col string) bool) (string, *BatchPlan, error) {
 	loop := &BatchPlan{Mode: BatchLoop}
 	var b *ast.BatchSource
 	switch s := raw.Stmt.(type) {
@@ -103,6 +111,15 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 	}
 	if (b.OnConflict || b.Merge) && len(b.Keys) == 0 {
 		return rawSQL, loop, nil
+	}
+	// A row whose key is NULL cannot be read back by key, so a batch that
+	// reads back runs row by row unless every key column refuses NULL.
+	if returning && !each {
+		for _, k := range b.Keys {
+			if !notNull(k) {
+				return rawSQL, loop, nil
+			}
+		}
 	}
 
 	// Every parameter must be one the VALUES row holds.
@@ -231,6 +248,10 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 	}
 	sort.Ints(plan.Unnest)
 	if len(keys) > 0 {
+		// PARTITION BY and GROUP BY put rows whose keys are NULL together,
+		// so each such row gets a round of its own. That is what one
+		// statement per row does: one INSERT ... ON CONFLICT keeps only
+		// one of several rows whose key is NULL.
 		partition := strings.Join(keys, ", ")
 		sel += " QUALIFY row_number() OVER (PARTITION BY " + partition + " ORDER BY sqlc_b.sqlc_ord) = $2"
 		plan.Rounds = "SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM " + source + " GROUP BY " + partition + ")"
@@ -249,7 +270,7 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 		}
 		var on []string
 		for i, k := range b.Keys {
-			on = append(on, b.Qualifier+"."+k+" IS NOT DISTINCT FROM ("+keys[i]+")")
+			on = append(on, b.Qualifier+"."+k+" = ("+keys[i]+")")
 		}
 		plan.Read = "SELECT sqlc_b.sqlc_elem, " + strings.Join(items, ", ") + " FROM " + source +
 			" JOIN " + b.Table + " ON " + strings.Join(on, " AND ") + " ORDER BY sqlc_b.sqlc_ord"
@@ -257,4 +278,28 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 		write += rawSQL[b.Values[1]-off:]
 	}
 	return write, plan, nil
+}
+
+// batchNotNull reports whether a column of an INSERT's target refuses NULL.
+func (c *Compiler) batchNotNull(raw *ast.RawStmt) func(string) bool {
+	return func(col string) bool {
+		ins, ok := raw.Stmt.(*ast.InsertStmt)
+		if !ok || c.coreCatalog == nil || ins.Relation == nil || ins.Relation.Relname == nil {
+			return false
+		}
+		cols, err := c.coreCatalog.TableColumns(*ins.Relation.Relname)
+		if err != nil {
+			return false
+		}
+		found := false
+		for _, info := range cols {
+			if strings.EqualFold(info.Name, col) {
+				if !info.NotNull && !info.IsPrimaryKey {
+					return false
+				}
+				found = true
+			}
+		}
+		return found
+	}
 }

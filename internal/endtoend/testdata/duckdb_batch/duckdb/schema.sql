@@ -32,11 +32,19 @@ CREATE SEQUENCE log_id_seq;
 CREATE TABLE log (
   id   BIGINT DEFAULT nextval('log_id_seq') NOT NULL,
   msg  VARCHAR NOT NULL,
-  payload JSON
+  payload JSON,
+  payloads JSON[]
 );
 
 CREATE TABLE metrics (
   id   BIGINT PRIMARY KEY,
   vals DOUBLE[],
   meta JSON NOT NULL
+);
+
+CREATE SEQUENCE tags_id_seq;
+CREATE TABLE tags (
+  id   BIGINT DEFAULT nextval('tags_id_seq') NOT NULL PRIMARY KEY,
+  name VARCHAR UNIQUE,
+  hits INTEGER NOT NULL DEFAULT 0
 );

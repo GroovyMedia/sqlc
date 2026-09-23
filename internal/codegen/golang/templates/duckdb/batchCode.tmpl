@@ -248,9 +248,17 @@ func (b *{{.MethodName}}BatchResults) QueryRow(f func(int, {{.Ret.DefineType}}, 
 }
 {{end}}
 
+// Close runs the batch if nothing has run it yet, and returns its error.
 func (b *{{.MethodName}}BatchResults) Close() error {
+	if b.closed {
+		return nil
+	}
 	b.closed = true
-	return nil
+	{{- if eq .Cmd ":batchexec"}}
+	return b.run()
+	{{- else}}
+	return b.query(make([][]{{.Ret.DefineType}}, len(b.rows)))
+	{{- end}}
 }
 {{end}}
 {{end}}

@@ -99,7 +99,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 
 	var batch *BatchPlan
 	if c.conf.Engine == config.EngineDuckDB && strings.HasPrefix(cmd, ":batch") {
-		write, plan, err := planDuckDBBatch(raw, rawSQL, params)
+		write, plan, err := planDuckDBBatch(raw, rawSQL, params, c.batchNotNull(raw))
 		if err != nil {
 			return nil, queryError(name, err)
 		}
