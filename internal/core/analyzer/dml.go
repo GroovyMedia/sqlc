@@ -425,7 +425,31 @@ func (a *analyzer) bindValue(rel scopeRel, target *core.ClassColumn, v ast.Node)
 		}
 	}
 	_, err := a.typeExpr(v)
+	// A placeholder under casts, as ($1::JSON)::DOUBLE[], takes its type
+	// from the cast and its name from the column it fills.
+	if err == nil && target != nil {
+		if pr := castParam(v); pr != nil {
+			if p, ok := a.params[pr.Number]; ok && p.Name == "" {
+				p.Name = target.Name
+				a.params[pr.Number] = p
+			}
+		}
+	}
 	return err
+}
+
+// castParam is the placeholder a chain of casts wraps, or nil.
+func castParam(n ast.Node) *ast.ParamRef {
+	for {
+		switch v := n.(type) {
+		case *ast.TypeCast:
+			n = v.Arg
+		case *ast.ParamRef:
+			return v
+		default:
+			return nil
+		}
+	}
 }
 
 func (a *analyzer) projectReturning(l *ast.List) error {

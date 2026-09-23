@@ -29,7 +29,7 @@ func singleValues(sel *dw.SelectStatement) ([]dw.Expr, [2]int, bool) {
 func (c *cc) batchValues(row []dw.Expr, span [2]int) *ast.BatchSource {
 	b := &ast.BatchSource{Values: span}
 	for _, e := range row {
-		b.Exprs = append(b.Exprs, fullSpan(e))
+		b.Exprs = append(b.Exprs, balance(c.src, fullSpan(e)))
 		walkDW(e, func(n dw.Node) {
 			if p, ok := n.(*dw.ParameterExpression); ok {
 				b.Params = append(b.Params, ast.BatchParam{Start: p.Pos(), End: p.End(), Number: p.Number})
@@ -159,7 +159,7 @@ func (c *cc) batchReturning(b *ast.BatchSource, items []dw.Expr) {
 	b.Returning = [2]int{kw, fullSpan(items[len(items)-1])[1]}
 	for _, item := range items {
 		_, star := item.(*dw.StarExpression)
-		b.ReturningItems = append(b.ReturningItems, fullSpan(item))
+		b.ReturningItems = append(b.ReturningItems, balance(c.src, fullSpan(item)))
 		b.ReturningStar = append(b.ReturningStar, star)
 	}
 }
@@ -180,6 +180,49 @@ func fullSpan(n dw.Node) [2]int {
 		}
 	})
 	return span
+}
+
+// balance widens span over the parentheses around its start or end that
+// darkwing leaves out of a node's span, as in "($1::JSON)::DOUBLE[]", until
+// the text it covers has as many "(" as ")". Parentheses inside quotes are
+// not told apart, which the batch expressions never need.
+func balance(src string, span [2]int) [2]int {
+	depth := func() (open, close int) {
+		for _, r := range src[span[0]:span[1]] {
+			switch r {
+			case '(':
+				open++
+			case ')':
+				close++
+			}
+		}
+		return
+	}
+	for {
+		open, close := depth()
+		switch {
+		case close > open:
+			i := span[0] - 1
+			for i >= 0 && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+				i--
+			}
+			if i < 0 || src[i] != '(' {
+				return span
+			}
+			span[0] = i
+		case open > close:
+			i := span[1]
+			for i < len(src) && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+				i++
+			}
+			if i >= len(src) || src[i] != ')' {
+				return span
+			}
+			span[1] = i + 1
+		default:
+			return span
+		}
+	}
 }
 
 func walkDW(n dw.Node, f func(dw.Node)) {

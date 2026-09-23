@@ -436,59 +436,83 @@ func duckdbBatchAtWith[T, U any](l []T, i int, f func(T) U) any {
 }
 
 // A DATE travels as the calendar day of the value in its own location, a
-// TIMESTAMP as its UTC wall clock, and a TIMESTAMPTZ as the instant.
+// TIMESTAMP as its UTC wall clock, and a TIMESTAMPTZ as the instant. The
+// zero time travels as NULL, as an unset date or time did through pgx.
 
-func duckdbBatchDate(t time.Time) string { return t.Format("2006-01-02") }
+func duckdbBatchDate(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.Format("2006-01-02")
+	return &s
+}
 
 func duckdbBatchDatePtr(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := duckdbBatchDate(*t)
-	return &s
+	return duckdbBatchDate(*t)
 }
 
 func duckdbBatchDateNull(t sql.NullTime) *string {
 	if !t.Valid {
 		return nil
 	}
-	return duckdbBatchDatePtr(&t.Time)
+	return duckdbBatchDate(t.Time)
 }
 
-func duckdbBatchTimestamp(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.999999999")
+func duckdbBatchTimestamp(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.UTC().Format("2006-01-02T15:04:05.999999999")
+	return &s
 }
 
 func duckdbBatchTimestampPtr(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := duckdbBatchTimestamp(*t)
-	return &s
+	return duckdbBatchTimestamp(*t)
 }
 
 func duckdbBatchTimestampNull(t sql.NullTime) *string {
 	if !t.Valid {
 		return nil
 	}
-	return duckdbBatchTimestampPtr(&t.Time)
+	return duckdbBatchTimestamp(t.Time)
 }
 
-func duckdbBatchTimestamptz(t time.Time) string { return t.Format(time.RFC3339Nano) }
+func duckdbBatchTimestamptz(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.Format(time.RFC3339Nano)
+	return &s
+}
 
 func duckdbBatchTimestamptzPtr(t *time.Time) *string {
 	if t == nil {
 		return nil
 	}
-	s := duckdbBatchTimestamptz(*t)
-	return &s
+	return duckdbBatchTimestamptz(*t)
 }
 
 func duckdbBatchTimestamptzNull(t sql.NullTime) *string {
 	if !t.Valid {
 		return nil
 	}
-	return duckdbBatchTimestamptzPtr(&t.Time)
+	return duckdbBatchTimestamptz(t.Time)
+}
+
+// duckdbBatchJSON is a JSON value as its text, so that the JSON null stays
+// a JSON value; nil is SQL NULL.
+func duckdbBatchJSON[T ~[]byte](m T) *string {
+	if m == nil {
+		return nil
+	}
+	s := string(m)
+	return &s
 }
 
 // duckdbBatchValuer is the value a sql.Null type or other driver.Valuer

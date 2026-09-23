@@ -34,3 +34,9 @@ CREATE TABLE log (
   msg  VARCHAR NOT NULL,
   payload JSON
 );
+
+CREATE TABLE metrics (
+  id   BIGINT PRIMARY KEY,
+  vals DOUBLE[],
+  meta JSON NOT NULL
+);

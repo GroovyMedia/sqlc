@@ -70,7 +70,7 @@ func batchFields(gq Query, query *plugin.Query) ([]BatchField, error) {
 		case helper != "":
 			switch p.typ {
 			case "time.Time":
-				f.Type, f.Value = "string", helper+"("+p.expr+")"
+				f.Type, f.Value = "*string", helper+"("+p.expr+")"
 			case "*time.Time":
 				f.Type, f.Value = "*string", helper+"Ptr("+p.expr+")"
 			case "sql.NullTime":
@@ -78,8 +78,8 @@ func batchFields(gq Query, query *plugin.Query) ([]BatchField, error) {
 			default:
 				return nil, fmt.Errorf("batch: parameter %d: %s is not a time type", p.number, p.typ)
 			}
-		case p.typ == "[]byte" && strings.EqualFold(p.dbType, "json"):
-			f.Type, f.Value = "json.RawMessage", "json.RawMessage("+p.expr+")"
+		case strings.EqualFold(p.dbType, "json") && (p.typ == "json.RawMessage" || p.typ == "[]byte"):
+			f.Type, f.Value = "*string", "duckdbBatchJSON("+p.expr+")"
 		case strings.HasPrefix(p.typ, "sql.Null") || strings.HasPrefix(p.typ, "Null"):
 			f.Type, f.Value = "any", "duckdbBatchValuer("+p.expr+")"
 		}
@@ -118,6 +118,8 @@ func unnestField(number int32, typ, expr, dbType string) (BatchField, error) {
 		f.Value = "duckdbBatchAtWith(" + expr + ", sqlcI, " + helper + "Ptr)"
 	case helper != "":
 		return f, fmt.Errorf("batch: parameter %d: %s is not a list of times", number, typ)
+	case strings.EqualFold(dbType, "json") && (elem == "json.RawMessage" || elem == "[]byte"):
+		f.Value = "duckdbBatchAtWith(" + expr + ", sqlcI, duckdbBatchJSON[" + elem + "])"
 	case strings.HasPrefix(elem, "sql.Null"):
 		return f, fmt.Errorf("batch: parameter %d: unnest of %s is not supported", number, typ)
 	}

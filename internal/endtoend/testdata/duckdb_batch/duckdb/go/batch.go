@@ -41,11 +41,11 @@ func (q *Queries) AddSeen(ctx context.Context, arg []AddSeenParams) *AddSeenBatc
 }
 
 type addSeenBatchRow struct {
-	P1   int64  `json:"p1"`
-	P2   string `json:"p2"`
-	P3   int32  `json:"p3"`
-	Ord  int    `json:"sqlc_ord"`
-	Elem int    `json:"sqlc_elem"`
+	P1   int64   `json:"p1"`
+	P2   *string `json:"p2"`
+	P3   int32   `json:"p3"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
 }
 
 func (b *AddSeenBatchResults) jsonRows() []addSeenBatchRow {
@@ -498,7 +498,7 @@ func (b *InsertLogListsBatchResults) Close() error {
 
 const insertLogPayloads = `-- name: InsertLogPayloads :batchmany
 INSERT INTO log (msg, payload)
-SELECT sqlc_b.p1, sqlc_b.p2 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"JSON","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b
+SELECT sqlc_b.p1, (sqlc_b.p2)::JSON FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"VARCHAR","p2":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b
 RETURNING id, payload;
 `
 
@@ -536,7 +536,7 @@ func (b *InsertLogPayloadsBatchResults) jsonRows() []insertLogPayloadsBatchRow {
 		for sqlcI := range duckdbBatchLen(len(arg.Msgs), len(arg.Payloads)) {
 			out = append(out, insertLogPayloadsBatchRow{
 				P1:   duckdbBatchAt(arg.Msgs, sqlcI),
-				P2:   duckdbBatchAt(arg.Payloads, sqlcI),
+				P2:   duckdbBatchAtWith(arg.Payloads, sqlcI, duckdbBatchJSON[json.RawMessage]),
 				Ord:  len(out),
 				Elem: sqlcIdx,
 			})
@@ -722,11 +722,11 @@ func (q *Queries) MergeSeen(ctx context.Context, arg []MergeSeenParams) *MergeSe
 }
 
 type mergeSeenBatchRow struct {
-	P1   int64  `json:"p1"`
-	P2   string `json:"p2"`
-	P3   int32  `json:"p3"`
-	Ord  int    `json:"sqlc_ord"`
-	Elem int    `json:"sqlc_elem"`
+	P1   int64   `json:"p1"`
+	P2   *string `json:"p2"`
+	P3   int32   `json:"p3"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
 }
 
 func (b *MergeSeenBatchResults) jsonRows() []mergeSeenBatchRow {
@@ -773,7 +773,7 @@ func (b *MergeSeenBatchResults) Close() error {
 
 const upsertDaily = `-- name: UpsertDaily :batchexec
 INSERT INTO daily (day, source, clicks, revenue, tags, meta, status, seen_at)
-SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3, sqlc_b.p4, sqlc_b.p5, sqlc_b.p6, sqlc_b.p7, sqlc_b.p8 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"JSON","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
+SELECT sqlc_b.p1, sqlc_b.p2, sqlc_b.p3, sqlc_b.p4, sqlc_b.p5, (sqlc_b.p6)::JSON, sqlc_b.p7, sqlc_b.p8 FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1, sqlc_b.p2 ORDER BY sqlc_b.sqlc_ord) = $2
 ON CONFLICT (day, source) DO UPDATE SET
     clicks  = EXCLUDED.clicks,
     revenue = EXCLUDED.revenue,
@@ -783,7 +783,7 @@ ON CONFLICT (day, source) DO UPDATE SET
     seen_at = EXCLUDED.seen_at;
 `
 
-const upsertDailyRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"JSON","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
+const upsertDailyRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"DATE","p2":"VARCHAR","p3":"BIGINT","p4":"DOUBLE","p5":"VARCHAR[]","p6":"VARCHAR","p7":"VARCHAR","p8":"TIMESTAMP WITH TIME ZONE","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1, sqlc_b.p2)`
 
 type UpsertDailyBatchResults struct {
 	ctx    context.Context
@@ -808,16 +808,16 @@ func (q *Queries) UpsertDaily(ctx context.Context, arg []UpsertDailyParams) *Ups
 }
 
 type upsertDailyBatchRow struct {
-	P1   string          `json:"p1"`
-	P2   string          `json:"p2"`
-	P3   *int64          `json:"p3"`
-	P4   *float64        `json:"p4"`
-	P5   []string        `json:"p5"`
-	P6   json.RawMessage `json:"p6"`
-	P7   *Status         `json:"p7"`
-	P8   *string         `json:"p8"`
-	Ord  int             `json:"sqlc_ord"`
-	Elem int             `json:"sqlc_elem"`
+	P1   *string  `json:"p1"`
+	P2   string   `json:"p2"`
+	P3   *int64   `json:"p3"`
+	P4   *float64 `json:"p4"`
+	P5   []string `json:"p5"`
+	P6   *string  `json:"p6"`
+	P7   *Status  `json:"p7"`
+	P8   *string  `json:"p8"`
+	Ord  int      `json:"sqlc_ord"`
+	Elem int      `json:"sqlc_elem"`
 }
 
 func (b *UpsertDailyBatchResults) jsonRows() []upsertDailyBatchRow {
@@ -829,7 +829,7 @@ func (b *UpsertDailyBatchResults) jsonRows() []upsertDailyBatchRow {
 			P3:   arg.Clicks,
 			P4:   arg.Revenue,
 			P5:   arg.Tags,
-			P6:   arg.Meta,
+			P6:   duckdbBatchJSON(arg.Meta),
 			P7:   arg.Status,
 			P8:   duckdbBatchTimestamptzPtr(arg.SeenAt),
 			Ord:  sqlcIdx,
@@ -895,10 +895,10 @@ func (q *Queries) UpsertKeyword(ctx context.Context, arg []UpsertKeywordParams) 
 }
 
 type upsertKeywordBatchRow struct {
-	P1   string `json:"p1"`
-	P2   string `json:"p2"`
-	Ord  int    `json:"sqlc_ord"`
-	Elem int    `json:"sqlc_elem"`
+	P1   string  `json:"p1"`
+	P2   *string `json:"p2"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
 }
 
 func (b *UpsertKeywordBatchResults) jsonRows() []upsertKeywordBatchRow {
@@ -996,10 +996,10 @@ func (q *Queries) UpsertKeywords(ctx context.Context, arg []UpsertKeywordsParams
 }
 
 type upsertKeywordsBatchRow struct {
-	P1   string `json:"p1"`
-	P2   string `json:"p2"`
-	Ord  int    `json:"sqlc_ord"`
-	Elem int    `json:"sqlc_elem"`
+	P1   string  `json:"p1"`
+	P2   *string `json:"p2"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
 }
 
 func (b *UpsertKeywordsBatchResults) jsonRows() []upsertKeywordsBatchRow {
@@ -1052,6 +1052,80 @@ func (b *UpsertKeywordsBatchResults) Query(f func(int, []int64, error)) {
 }
 
 func (b *UpsertKeywordsBatchResults) Close() error {
+	b.closed = true
+	return nil
+}
+
+const upsertMetric = `-- name: UpsertMetric :batchexec
+INSERT INTO metrics (id, vals, meta) SELECT sqlc_b.p1, ((sqlc_b.p2)::JSON::JSON)::DOUBLE[], (sqlc_b.p3)::JSON FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b QUALIFY row_number() OVER (PARTITION BY sqlc_b.p1 ORDER BY sqlc_b.sqlc_ord) = $2
+ON CONFLICT (id) DO UPDATE SET vals = EXCLUDED.vals, meta = EXCLUDED.meta;
+`
+
+const upsertMetricRounds = `SELECT coalesce(max(n), 0)::BIGINT FROM (SELECT count(*) AS n FROM (SELECT unnest(from_json($1::JSON, '[{"p1":"BIGINT","p2":"VARCHAR","p3":"VARCHAR","sqlc_ord":"BIGINT","sqlc_elem":"BIGINT"}]'), recursive := true)) AS sqlc_b GROUP BY sqlc_b.p1)`
+
+type UpsertMetricBatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []UpsertMetricParams
+	closed bool
+}
+
+type UpsertMetricParams struct {
+	ID   int64
+	Vals json.RawMessage
+	Meta json.RawMessage
+}
+
+func (q *Queries) UpsertMetric(ctx context.Context, arg []UpsertMetricParams) *UpsertMetricBatchResults {
+	return &UpsertMetricBatchResults{ctx: ctx, db: q.db, rows: arg}
+}
+
+type upsertMetricBatchRow struct {
+	P1   int64   `json:"p1"`
+	P2   *string `json:"p2"`
+	P3   *string `json:"p3"`
+	Ord  int     `json:"sqlc_ord"`
+	Elem int     `json:"sqlc_elem"`
+}
+
+func (b *UpsertMetricBatchResults) jsonRows() []upsertMetricBatchRow {
+	out := make([]upsertMetricBatchRow, len(b.rows))
+	for sqlcIdx, arg := range b.rows {
+		out[sqlcIdx] = upsertMetricBatchRow{
+			P1:   arg.ID,
+			P2:   duckdbBatchJSON(arg.Vals),
+			P3:   duckdbBatchJSON(arg.Meta),
+			Ord:  sqlcIdx,
+			Elem: sqlcIdx,
+		}
+	}
+	return out
+}
+
+func (b *UpsertMetricBatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	return duckdbBatchWrite(b.ctx, b.db, b.jsonRows(), upsertMetric, upsertMetricRounds)
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *UpsertMetricBatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+
+func (b *UpsertMetricBatchResults) Close() error {
 	b.closed = true
 	return nil
 }

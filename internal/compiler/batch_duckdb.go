@@ -44,37 +44,41 @@ const (
 	BatchLoop     = "loop"
 )
 
-// duckdbBatchType is the from_json type of a parameter, and whether the
-// value travels as base64 text. ok is false for a type the JSON form does
-// not carry; such a batch runs row by row.
-func duckdbBatchType(col *Column) (typ string, base64, ok bool) {
+// duckdbBatchType is the from_json type of a parameter, and how the SQL
+// turns the JSON field back into the value: a BLOB travels as base64 text,
+// and a JSON value as its text, so that a JSON null stays a JSON null and
+// only a missing value is SQL NULL. ok is false for a type the JSON form
+// does not carry; such a batch runs row by row.
+func duckdbBatchType(col *Column) (typ string, wrap string, ok bool) {
 	name := strings.ToLower(col.DataType)
 	if col.TypeExpr != nil && col.TypeExpr.IsArray() {
 		inner := col.TypeExpr.Innermost()
 		switch strings.ToLower(inner.Name) {
 		case "date", "timestamp", "timestamp with time zone", "timestamptz", "blob", "bytea", "decimal", "numeric":
-			return "", false, false
+			return "", "", false
 		}
 		elem, _, ok := duckdbBatchType(&Column{DataType: inner.Name})
 		if !ok {
-			return "", false, false
+			return "", "", false
 		}
-		return elem + strings.Repeat("[]", col.TypeExpr.ArrayDims()), false, true
+		return elem + strings.Repeat("[]", col.TypeExpr.ArrayDims()), "", true
 	}
 	switch name {
 	case "boolean", "bool", "tinyint", "smallint", "integer", "int", "bigint", "hugeint",
 		"utinyint", "usmallint", "uinteger", "ubigint", "uhugeint", "float", "real", "double",
-		"varchar", "text", "string", "uuid", "json", "date", "timestamp":
-		return strings.ToUpper(name), false, true
+		"varchar", "text", "string", "uuid", "date", "timestamp":
+		return strings.ToUpper(name), "", true
+	case "json":
+		return "VARCHAR", "(%s)::JSON", true
 	case "timestamp with time zone", "timestamptz":
-		return "TIMESTAMP WITH TIME ZONE", false, true
+		return "TIMESTAMP WITH TIME ZONE", "", true
 	case "blob", "bytea":
-		return "VARCHAR", true, true
+		return "VARCHAR", "from_base64(%s)", true
 	case "decimal", "numeric", "interval", "time", "time with time zone", "struct", "map", "union", "bit", "any", "":
-		return "", false, false
+		return "", "", false
 	}
 	// An enum or other type the schema declares travels as its text.
-	return "VARCHAR", false, true
+	return "VARCHAR", "", true
 }
 
 // planDuckDBBatch rewrites a :batch statement for the JSON form. It returns
@@ -126,7 +130,7 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 		}
 	}
 	types := map[int]string{}
-	blob := map[int]bool{}
+	wraps := map[int]string{}
 	for _, p := range params {
 		if !inValues[p.Number] || p.Column == nil {
 			return rawSQL, loop, nil
@@ -139,12 +143,12 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 			elem := col.TypeExpr.Element()
 			col = &Column{DataType: elem.Name, TypeExpr: elem}
 		}
-		typ, b64, ok := duckdbBatchType(col)
+		typ, wrap, ok := duckdbBatchType(col)
 		if !ok {
 			return rawSQL, loop, nil
 		}
 		types[p.Number] = typ
-		blob[p.Number] = b64
+		wraps[p.Number] = wrap
 	}
 
 	off := raw.StmtLocation
@@ -158,10 +162,11 @@ func planDuckDBBatch(raw *ast.RawStmt, rawSQL string, params []Parameter) (strin
 		text       string
 	}
 	ref := func(n int) string {
-		if blob[n] {
-			return fmt.Sprintf("from_base64(sqlc_b.p%d)", n)
+		r := fmt.Sprintf("sqlc_b.p%d", n)
+		if w := wraps[n]; w != "" {
+			return fmt.Sprintf(w, r)
 		}
-		return fmt.Sprintf("sqlc_b.p%d", n)
+		return r
 	}
 	var edits []edit
 	for _, u := range b.Unnest {

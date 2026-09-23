@@ -78,6 +78,12 @@ type Log struct {
 	Payload json.RawMessage
 }
 
+type Metric struct {
+	ID   int64
+	Vals []float64
+	Meta json.RawMessage
+}
+
 type Seen struct {
 	AdID int64
 	Day  time.Time

@@ -63,3 +63,7 @@ ON CONFLICT (day, source) DO UPDATE SET status = EXCLUDED.status;
 INSERT INTO log (msg, payload)
 SELECT unnest(@msgs::VARCHAR[]), unnest(@payloads::JSON[])
 RETURNING id, payload;
+
+-- name: UpsertMetric :batchexec
+INSERT INTO metrics (id, vals, meta) VALUES ($1, ($2::JSON)::DOUBLE[], $3)
+ON CONFLICT (id) DO UPDATE SET vals = EXCLUDED.vals, meta = EXCLUDED.meta;
