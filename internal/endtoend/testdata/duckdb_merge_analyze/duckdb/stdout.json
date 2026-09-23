@@ -1,0 +1,192 @@
+[
+  {
+    "name": "UpsertStock",
+    "cmd": ":exec",
+    "columns": [],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "item",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "day",
+          "type": {
+            "name": "date"
+          }
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "qty",
+          "type": {
+            "name": "integer"
+          },
+          "table": "stock"
+        }
+      },
+      {
+        "number": 4,
+        "column": {
+          "name": "note",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          },
+          "table": "stock"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ApplyIncoming",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "merge_action",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "item",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "stock"
+      },
+      {
+        "name": "qty",
+        "type": {
+          "name": "integer"
+        },
+        "table": "stock"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "since",
+          "type": {
+            "name": "date"
+          },
+          "table": "stock"
+        }
+      }
+    ]
+  },
+  {
+    "name": "ReplaceDay",
+    "cmd": ":many",
+    "columns": [
+      {
+        "name": "item",
+        "type": {
+          "name": "varchar"
+        },
+        "table": "stock"
+      },
+      {
+        "name": "day",
+        "type": {
+          "name": "date"
+        },
+        "table": "stock"
+      },
+      {
+        "name": "qty",
+        "type": {
+          "name": "integer"
+        },
+        "table": "stock"
+      },
+      {
+        "name": "note",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "stock"
+      },
+      {
+        "name": "updated",
+        "type": {
+          "name": "timestamp with time zone",
+          "nullable": true
+        },
+        "table": "stock"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "day",
+          "type": {
+            "name": "date"
+          },
+          "table": "incoming"
+        }
+      }
+    ]
+  },
+  {
+    "name": "SetNote",
+    "cmd": ":one",
+    "columns": [
+      {
+        "name": "merge_action",
+        "type": {
+          "name": "varchar"
+        }
+      },
+      {
+        "name": "note",
+        "type": {
+          "name": "varchar",
+          "nullable": true
+        },
+        "table": "stock"
+      }
+    ],
+    "params": [
+      {
+        "number": 1,
+        "column": {
+          "name": "item",
+          "type": {
+            "name": "varchar"
+          }
+        }
+      },
+      {
+        "number": 2,
+        "column": {
+          "name": "day",
+          "type": {
+            "name": "date"
+          }
+        }
+      },
+      {
+        "number": 3,
+        "column": {
+          "name": "note",
+          "type": {
+            "name": "varchar",
+            "nullable": true
+          },
+          "table": "stock"
+        }
+      }
+    ]
+  }
+]

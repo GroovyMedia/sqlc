@@ -17,6 +17,8 @@ type InsertStmt struct {
 	// PostgreSQL 18 RETURNING WITH (OLD AS ..., NEW AS ...) aliases
 	ReturningOldAlias string `json:"returning_old_alias"`
 	ReturningNewAlias string `json:"returning_new_alias"`
+	// Batch is set by the DuckDB engine for an INSERT ... VALUES of one row.
+	Batch *BatchSource `json:"batch,omitempty"`
 }
 
 func (n *InsertStmt) Pos() int {

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sqlc-dev/sqlc/internal/config"
 	"github.com/sqlc-dev/sqlc/internal/core"
 	coreanalyzer "github.com/sqlc-dev/sqlc/internal/core/analyzer"
 	"github.com/sqlc-dev/sqlc/internal/metadata"
@@ -72,7 +73,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 	var cols []*Column
 	var params []Parameter
 	switch raw.Stmt.(type) {
-	case *ast.SelectStmt, *ast.InsertStmt, *ast.UpdateStmt, *ast.DeleteStmt:
+	case *ast.SelectStmt, *ast.InsertStmt, *ast.UpdateStmt, *ast.DeleteStmt, *ast.MergeStmt:
 		res, err := coreanalyzer.PrepareWith(c.coreCatalog, raw, coreanalyzer.Options{NullableParams: namedParams.Nullable()})
 		if err != nil {
 			return nil, queryError(name, err)
@@ -93,6 +94,26 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 		expanded, err = source.Mutate(rawSQL, c.expandCore(raw, res.Stars))
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	var batch *BatchPlan
+	if c.conf.Engine == config.EngineDuckDB && strings.HasPrefix(cmd, ":batch") {
+		write, plan, err := planDuckDBBatch(raw, rawSQL, params)
+		if err != nil {
+			return nil, queryError(name, err)
+		}
+		batch = plan
+		if plan.Mode == BatchJSON {
+			expanded = write
+			for _, extra := range []string{plan.Rounds, plan.Read} {
+				if extra == "" {
+					continue
+				}
+				if _, err := c.newParser().Parse(strings.NewReader(extra + ";")); err != nil {
+					return nil, queryError(name, fmt.Errorf("batch rewrite: %w", err))
+				}
+			}
 		}
 	}
 
@@ -121,6 +142,7 @@ func (c *Compiler) parseQueryCore(raw *ast.RawStmt, src string, pre *preprocess.
 		Columns:         cols,
 		SQL:             trimmed,
 		InsertIntoTable: insertTable,
+		Batch:           batch,
 	}, nil
 }
 

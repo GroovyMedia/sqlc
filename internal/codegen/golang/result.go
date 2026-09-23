@@ -350,6 +350,16 @@ func buildQueries(req *plugin.GenerateRequest, options *opts.Options, enums []En
 			}
 		}
 
+		if query.Batch != nil && sqlpkg.IsDuckDB() {
+			gq.Batch = query.Batch
+			if gq.BatchJSON() {
+				fields, err := batchFields(gq, query)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", query.Name, err)
+				}
+				gq.BatchFields = fields
+			}
+		}
 		qs = append(qs, gq)
 	}
 	sort.Slice(qs, func(i, j int) bool { return qs[i].MethodName < qs[j].MethodName })

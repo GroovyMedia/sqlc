@@ -1,6 +1,6 @@
 {{define "queryCodeStd"}}
 {{range .GoQueries}}
-{{if $.OutputQuery .SourceName}}
+{{if and ($.OutputQuery .SourceName) (not (hasPrefix .Cmd ":batch"))}}
 const {{.ConstantName}} = {{$.Q}}-- name: {{.MethodName}} {{.Cmd}}
 {{escape .SQL}}
 {{$.Q}}

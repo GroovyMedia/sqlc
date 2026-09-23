@@ -39,6 +39,8 @@ func (c *cc) convert(node dw.Stmt) ast.Node {
 		return c.convertUpdateStatement(n)
 	case *dw.DeleteStatement:
 		return c.convertDeleteStatement(n)
+	case *dw.MergeIntoStatement:
+		return c.convertMergeStatement(n)
 	case *dw.TruncateStatement:
 		return c.convertTruncateStatement(n)
 	case *dw.CreateStatement:
@@ -1142,6 +1144,7 @@ func (c *cc) convertInsertStatement(n *dw.InsertStatement) ast.Node {
 	}
 
 	stmt.ReturningList = c.convertReturning(n.Returning)
+	stmt.Batch = c.insertBatch(n)
 	return stmt
 }
 
@@ -1225,6 +1228,95 @@ func (c *cc) convertDeleteStatement(n *dw.DeleteStatement) ast.Node {
 	}
 	stmt.ReturningList = c.convertReturning(n.Returning)
 	return stmt
+}
+
+func (c *cc) convertMergeStatement(n *dw.MergeIntoStatement) ast.Node {
+	target, ok := c.convertTableRef(n.Target).(*ast.RangeVar)
+	if !ok {
+		return c.todo(n)
+	}
+	source := c.convertTableRef(n.Source)
+	if source == nil {
+		return c.todo(n)
+	}
+	stmt := &ast.MergeStmt{
+		Relation:    target,
+		Source:      source,
+		WithClause:  c.convertWithClause(n.CTEs),
+		WhenClauses: &ast.List{},
+	}
+	if n.JoinCondition != nil {
+		stmt.JoinCondition = c.convertExpr(n.JoinCondition)
+	}
+	if len(n.UsingColumns) > 0 {
+		stmt.UsingColumns = &ast.List{}
+		for _, col := range n.UsingColumns {
+			stmt.UsingColumns.Items = append(stmt.UsingColumns.Items, &ast.String{Str: identifier(col)})
+		}
+	}
+	for i := range n.Actions {
+		stmt.WhenClauses.Items = append(stmt.WhenClauses.Items, c.convertMergeAction(&n.Actions[i]))
+	}
+	stmt.ReturningList = c.convertReturning(n.Returning)
+	stmt.Batch = c.mergeBatch(n)
+	return stmt
+}
+
+func (c *cc) convertMergeAction(a *dw.MergeIntoAction) *ast.MergeWhenClause {
+	w := &ast.MergeWhenClause{
+		Location: c.loc(a),
+		ByName:   a.ColumnOrder == dw.InsertByName,
+	}
+	switch a.Kind {
+	case dw.MergeWhenMatched:
+		w.Kind = ast.MergeWhenMatched
+	case dw.MergeWhenNotMatchedBySource:
+		w.Kind = ast.MergeWhenNotMatchedBySource
+	default:
+		w.Kind = ast.MergeWhenNotMatchedByTarget
+	}
+	if a.Condition != nil {
+		w.Condition = c.convertExpr(a.Condition)
+	}
+	switch a.Action {
+	case dw.MergeUpdate:
+		w.Action = ast.MergeActionUpdate
+		// darkwing leaves SetInfo nil for UPDATE, UPDATE SET * and UPDATE
+		// BY NAME: every column, from the source.
+		if a.SetInfo == nil {
+			w.Star = true
+		} else {
+			w.TargetList = c.convertSetClause(a.SetInfo)
+		}
+	case dw.MergeDelete:
+		w.Action = ast.MergeActionDelete
+	case dw.MergeInsert:
+		w.Action = ast.MergeActionInsert
+		w.DefaultValues = a.DefaultValues
+		if len(a.Columns) > 0 {
+			w.Cols = &ast.List{}
+			for _, col := range a.Columns {
+				name := identifier(col)
+				w.Cols.Items = append(w.Cols.Items, &ast.ResTarget{Name: &name})
+			}
+		}
+		if len(a.Expressions) > 0 {
+			w.Values = &ast.List{}
+			for _, e := range a.Expressions {
+				w.Values.Items = append(w.Values.Items, c.convertExpr(e))
+			}
+		}
+		// INSERT, INSERT * and INSERT BY NAME: every column, from the source.
+		w.Star = !a.DefaultValues && len(a.Expressions) == 0
+	case dw.MergeDoNothing:
+		w.Action = ast.MergeActionDoNothing
+	case dw.MergeError:
+		w.Action = ast.MergeActionError
+		if a.ErrorExpr != nil {
+			w.ErrorExpr = c.convertExpr(a.ErrorExpr)
+		}
+	}
+	return w
 }
 
 func (c *cc) convertTruncateStatement(n *dw.TruncateStatement) ast.Node {

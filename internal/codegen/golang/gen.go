@@ -208,8 +208,11 @@ func generate(req *plugin.GenerateRequest, options *opts.Options, enums []Enum, 
 		tctx.SQLDriver = opts.SQLDriverGoSQLDriverMySQL
 	}
 
-	if tctx.UsesBatch && !tctx.SQLDriver.IsPGX() {
-		return nil, errors.New(":batch* commands are only supported by pgx")
+	if tctx.UsesBatch && !tctx.SQLDriver.IsPGX() && !tctx.SQLDriver.IsDuckDB() {
+		return nil, errors.New(":batch* commands are only supported by pgx and DuckDB")
+	}
+	if tctx.UsesBatch && tctx.SQLDriver.IsDuckDB() && tctx.EmitMethodsWithDBArgument {
+		return nil, errors.New(":batch* commands on DuckDB do not support emit_methods_with_db_argument")
 	}
 
 	funcMap := template.FuncMap{

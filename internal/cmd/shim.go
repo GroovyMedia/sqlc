@@ -152,7 +152,19 @@ func pluginQueries(r *compiler.Result) []*plugin.Query {
 				Name:    q.InsertIntoTable.Name,
 			}
 		}
+		var batch *plugin.BatchPlan
+		if q.Batch != nil {
+			batch = &plugin.BatchPlan{
+				Mode:       q.Batch.Mode,
+				RoundsText: q.Batch.Rounds,
+				ReadText:   q.Batch.Read,
+			}
+			for _, n := range q.Batch.Unnest {
+				batch.UnnestParams = append(batch.UnnestParams, int32(n))
+			}
+		}
 		out = append(out, &plugin.Query{
+			Batch:           batch,
 			Name:            q.Metadata.Name,
 			Cmd:             q.Metadata.Cmd,
 			Text:            q.SQL,

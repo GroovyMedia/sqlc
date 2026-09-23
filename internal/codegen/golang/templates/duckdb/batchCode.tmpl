@@ -1,0 +1,230 @@
+{{define "batchCodeDuckDB"}}
+
+var (
+	ErrBatchAlreadyClosed = errors.New("batch already closed")
+)
+
+{{range .GoQueries}}
+{{if eq (hasPrefix .Cmd ":batch") true }}
+const {{.ConstantName}} = {{$.Q}}-- name: {{.MethodName}} {{.Cmd}}
+{{escape .SQL}}
+{{$.Q}}
+{{- if .BatchJSON}}
+{{- if .Batch.RoundsText}}
+
+const {{.ConstantName}}Rounds = {{$.Q}}{{escape .Batch.RoundsText}}{{$.Q}}
+{{- end}}
+{{- if .Batch.ReadText}}
+
+const {{.ConstantName}}Read = {{$.Q}}{{escape .Batch.ReadText}}{{$.Q}}
+{{- end}}
+{{- end}}
+
+type {{.MethodName}}BatchResults struct {
+	ctx    context.Context
+	db     DBTX
+	rows   []{{.Arg.DefineType}}
+	closed bool
+}
+
+{{if .Arg.Struct}}
+type {{.Arg.Type}} struct { {{- range .Arg.Struct.Fields}}
+  {{.Name}} {{.Type}} {{if .Tag}}{{$.Q}}{{.Tag}}{{$.Q}}{{end}}
+  {{- end}}
+}
+{{end}}
+
+{{if .Ret.EmitStruct}}
+type {{.Ret.Type}} struct { {{- range .Ret.Struct.Fields}}
+  {{.Name}} {{.Type}} {{if .Tag}}{{$.Q}}{{.Tag}}{{$.Q}}{{end}}
+  {{- end}}
+}
+{{end}}
+
+{{range .Comments}}//{{.}}
+{{end -}}
+func (q *Queries) {{.MethodName}}(ctx context.Context, {{.Arg.SlicePair}}) *{{.MethodName}}BatchResults {
+	return &{{.MethodName}}BatchResults{ctx: ctx, db: q.db, rows: {{.Arg.Name}}}
+}
+
+{{if .BatchJSON}}
+type {{.BatchRowType}} struct {
+{{- range .BatchFields}}
+	{{.Name}} {{.Type}} {{$.Q}}json:"{{.Key}}"{{$.Q}}
+{{- end}}
+	Ord  int {{$.Q}}json:"sqlc_ord"{{$.Q}}
+	Elem int {{$.Q}}json:"sqlc_elem"{{$.Q}}
+}
+
+func (b *{{.MethodName}}BatchResults) jsonRows() []{{.BatchRowType}} {
+	{{- if .BatchLists}}
+	var out []{{.BatchRowType}}
+	for sqlcIdx, {{.Arg.Name}} := range b.rows {
+		for sqlcI := range duckdbBatchLen({{.BatchLists}}) {
+			out = append(out, {{.BatchRowType}}{
+			{{- range .BatchFields}}
+				{{.Name}}: {{.Value}},
+			{{- end}}
+				Ord:  len(out),
+				Elem: sqlcIdx,
+			})
+		}
+	}
+	{{- else}}
+	out := make([]{{.BatchRowType}}, len(b.rows))
+	for sqlcIdx, {{.Arg.Name}} := range b.rows {
+		out[sqlcIdx] = {{.BatchRowType}}{
+		{{- range .BatchFields}}
+			{{.Name}}: {{.Value}},
+		{{- end}}
+			Ord:  sqlcIdx,
+			Elem: sqlcIdx,
+		}
+	}
+	{{- end}}
+	return out
+}
+{{end}}
+
+{{if eq .Cmd ":batchexec"}}
+func (b *{{.MethodName}}BatchResults) run() error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	{{- if .BatchJSON}}
+	return duckdbBatchWrite(b.ctx, b.db, b.jsonRows(), {{.ConstantName}}, {{if .Batch.RoundsText}}{{.ConstantName}}Rounds{{else}}""{{end}})
+	{{- else}}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for _, {{.Arg.Name}} := range b.rows {
+			if _, err := db.ExecContext(b.ctx, {{.ConstantName}}, {{.Arg.Params}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	{{- end}}
+}
+
+// Exec runs the whole batch in one transaction and calls f once per row,
+// every row with the same error.
+func (b *{{.MethodName}}BatchResults) Exec(f func(int, error)) {
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.run()
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		f(t, err)
+	}
+}
+{{end}}
+
+{{if or (eq .Cmd ":batchmany") (eq .Cmd ":batchone")}}
+func (b *{{.MethodName}}BatchResults) query(items [][]{{.Ret.DefineType}}) error {
+	if len(b.rows) == 0 {
+		return nil
+	}
+	{{- if .BatchJSON}}
+	return duckdbBatchRead(b.ctx, b.db, b.jsonRows(), {{.ConstantName}}, {{if .Batch.RoundsText}}{{.ConstantName}}Rounds{{else}}""{{end}}, {{.ConstantName}}Read, func(scan func(...any) error) error {
+		var sqlcElem int
+		var {{.Ret.Name}} {{.Ret.Type}}
+		if err := scan(&sqlcElem, {{.Ret.Scan}}); err != nil {
+			return err
+		}
+		items[sqlcElem] = append(items[sqlcElem], {{.Ret.ReturnName}})
+		return nil
+	})
+	{{- else}}
+	return duckdbTx(b.ctx, b.db, func(db DBTX) error {
+		for sqlcIdx, {{.Arg.Name}} := range b.rows {
+			sqlcRows, err := db.QueryContext(b.ctx, {{.ConstantName}}, {{.Arg.Params}})
+			if err != nil {
+				return err
+			}
+			for sqlcRows.Next() {
+				var {{.Ret.Name}} {{.Ret.Type}}
+				if err := sqlcRows.Scan({{.Ret.Scan}}); err != nil {
+					sqlcRows.Close()
+					return err
+				}
+				items[sqlcIdx] = append(items[sqlcIdx], {{.Ret.ReturnName}})
+			}
+			if err := sqlcRows.Close(); err != nil {
+				return err
+			}
+			if err := sqlcRows.Err(); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	{{- end}}
+}
+{{end}}
+
+{{if eq .Cmd ":batchmany"}}
+// Query runs the whole batch in one transaction and calls f once per row
+// with the rows that row returned. When the batch fails, every row gets
+// the error.
+func (b *{{.MethodName}}BatchResults) Query(f func(int, []{{.Ret.DefineType}}, error)) {
+	items := make([][]{{.Ret.DefineType}}, len(b.rows))
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.query(items)
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		if err != nil {
+			items[t] = nil
+		}
+		{{- if $.EmitEmptySlices}}
+		if items[t] == nil {
+			items[t] = []{{.Ret.DefineType}}{}
+		}
+		{{- end}}
+		f(t, items[t], err)
+	}
+}
+{{end}}
+
+{{if eq .Cmd ":batchone"}}
+// QueryRow runs the whole batch in one transaction and calls f once per
+// row with the row it returned. When the batch fails, every row gets the
+// error.
+func (b *{{.MethodName}}BatchResults) QueryRow(f func(int, {{.Ret.DefineType}}, error)) {
+	items := make([][]{{.Ret.DefineType}}, len(b.rows))
+	err := ErrBatchAlreadyClosed
+	if !b.closed {
+		err = b.query(items)
+		b.closed = true
+	}
+	if f == nil {
+		return
+	}
+	for t := range b.rows {
+		var {{.Ret.Name}} {{.Ret.DefineType}}
+		switch {
+		case err != nil:
+			f(t, {{.Ret.Name}}, err)
+		case len(items[t]) == 0:
+			f(t, {{.Ret.Name}}, duckdbErrNoRows)
+		default:
+			f(t, items[t][0], nil)
+		}
+	}
+}
+{{end}}
+
+func (b *{{.MethodName}}BatchResults) Close() error {
+	b.closed = true
+	return nil
+}
+{{end}}
+{{end}}
+{{end}}

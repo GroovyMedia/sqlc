@@ -107,6 +107,122 @@ func (a *analyzer) analyzeUpdate(s *ast.UpdateStmt) error {
 	return a.projectReturning(s.ReturningList)
 }
 
+// analyzeMerge types a MERGE INTO. The ON condition and a WHEN MATCHED arm
+// see the target and the source. A WHEN NOT MATCHED arm sees only the
+// source, and a WHEN NOT MATCHED BY SOURCE arm only the target, as DuckDB
+// binds them. RETURNING sees the target and merge_action.
+func (a *analyzer) analyzeMerge(s *ast.MergeStmt) error {
+	if err := a.bindCTEs(s.WithClause); err != nil {
+		return err
+	}
+	if s.Relation == nil {
+		return fmt.Errorf("merge: missing relation")
+	}
+	sc, err := a.relationScope(&ast.List{Items: []ast.Node{s.Relation}}, &ast.List{Items: []ast.Node{s.Source}}, nil)
+	if err != nil {
+		return err
+	}
+	if len(sc.rels) != 2 {
+		return fmt.Errorf("merge: unsupported source %T", s.Source)
+	}
+	target, source := sc.rels[0], sc.rels[1]
+
+	for _, item := range listItems(s.UsingColumns) {
+		name, ok := item.(*ast.String)
+		if !ok {
+			continue
+		}
+		for _, rel := range []scopeRel{target, source} {
+			if _, ok := findColumn(rel, name.Str); !ok {
+				return fmt.Errorf("using: unknown column %q", name.Str)
+			}
+		}
+	}
+	a.scope = sc
+	if s.JoinCondition != nil {
+		if _, err := a.typeExpr(s.JoinCondition); err != nil {
+			return fmt.Errorf("on: %w", err)
+		}
+	}
+
+	for _, item := range listItems(s.WhenClauses) {
+		w, ok := item.(*ast.MergeWhenClause)
+		if !ok {
+			continue
+		}
+		switch w.Kind {
+		case ast.MergeWhenMatched:
+			a.scope = sc
+		case ast.MergeWhenNotMatchedBySource:
+			a.scope = &scope{rels: []scopeRel{target}}
+		default:
+			a.scope = &scope{rels: []scopeRel{source}}
+		}
+		if err := a.analyzeMergeWhen(w, target); err != nil {
+			return err
+		}
+	}
+
+	// merge_action is a column only RETURNING has, and RETURNING * leaves
+	// it out.
+	action := scopeRel{cols: []core.ClassColumn{{
+		Name:    "merge_action",
+		TypeOID: a.namedType("varchar").typeOID,
+		NotNull: true,
+		Hidden:  true,
+	}}}
+	a.scope = &scope{rels: []scopeRel{target, action}}
+	return a.projectReturning(s.ReturningList)
+}
+
+func (a *analyzer) analyzeMergeWhen(w *ast.MergeWhenClause, target scopeRel) error {
+	if w.Condition != nil {
+		if _, err := a.typeExpr(w.Condition); err != nil {
+			return fmt.Errorf("when: %w", err)
+		}
+	}
+	switch w.Action {
+	case ast.MergeActionUpdate:
+		for _, item := range listItems(w.TargetList) {
+			rt, ok := item.(*ast.ResTarget)
+			if !ok || rt.Name == nil {
+				continue
+			}
+			col, ok := findColumn(target, *rt.Name)
+			if !ok {
+				return fmt.Errorf("unknown column %q", *rt.Name)
+			}
+			if err := a.bindValue(target, &col, rt.Val); err != nil {
+				return fmt.Errorf("set %s: %w", *rt.Name, err)
+			}
+		}
+	case ast.MergeActionInsert:
+		if w.Star || w.DefaultValues {
+			return nil
+		}
+		targets, err := insertTargets(target, w.Cols)
+		if err != nil {
+			return err
+		}
+		for i, v := range listItems(w.Values) {
+			var t *core.ClassColumn
+			if i < len(targets) {
+				t = &targets[i]
+			}
+			if err := a.bindValue(target, t, v); err != nil {
+				return err
+			}
+		}
+	case ast.MergeActionError:
+		if w.ErrorExpr != nil {
+			if _, err := a.typeExpr(w.ErrorExpr); err != nil {
+				return fmt.Errorf("error: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func (a *analyzer) analyzeDelete(s *ast.DeleteStmt) error {
 	if err := a.bindCTEs(s.WithClause); err != nil {
 		return err

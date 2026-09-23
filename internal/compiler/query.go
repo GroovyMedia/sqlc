@@ -59,6 +59,9 @@ type Query struct {
 
 	// Needed for vet
 	RawStmt *ast.RawStmt
+
+	// Batch is how a DuckDB :batch query runs.
+	Batch *BatchPlan
 }
 
 type Parameter struct {

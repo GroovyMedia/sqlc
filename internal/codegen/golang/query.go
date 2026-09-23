@@ -308,6 +308,46 @@ type Query struct {
 	Arg          QueryValue
 	// Used for :copyfrom
 	Table *plugin.Identifier
+	// Used for a DuckDB :batch query: how it runs, and for the JSON form
+	// the field of the JSON row each parameter fills.
+	Batch       *plugin.BatchPlan
+	BatchFields []BatchField
+}
+
+// BatchField is one parameter of a DuckDB :batch query in the JSON row
+// the rows travel as: Key names it in the JSON, Type is the Go type of the
+// row field and Value the expression that fills it from arg.
+type BatchField struct {
+	Name  string
+	Key   string
+	Type  string
+	Value string
+	// List is the Go expression of an unnested list; Value then reads its
+	// element sqlcI.
+	List string
+}
+
+// BatchJSON reports a DuckDB :batch query that takes all its rows in one
+// statement.
+func (q Query) BatchJSON() bool {
+	return q.Batch != nil && q.Batch.Mode == "json"
+}
+
+// BatchLists is the lengths of the lists a JSON batch unnests, as Go
+// arguments, or "" when it unnests none.
+func (q Query) BatchLists() string {
+	var out []string
+	for _, f := range q.BatchFields {
+		if f.List != "" {
+			out = append(out, "len("+f.List+")")
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// BatchRowType is the Go type of one row of a JSON batch.
+func (q Query) BatchRowType() string {
+	return strings.ToLower(q.MethodName[:1]) + q.MethodName[1:] + "BatchRow"
 }
 
 func (q Query) hasRetType() bool {

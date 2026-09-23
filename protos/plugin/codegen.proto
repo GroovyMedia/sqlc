@@ -111,6 +111,18 @@ message Query {
   repeated string comments = 6 [json_name = "comments"];
   string filename = 7 [json_name = "filename"];
   Identifier insert_into_table = 8 [json_name = "insert_into_table"];
+  BatchPlan batch = 9 [json_name = "batch"];
+}
+
+// BatchPlan says how a DuckDB :batch query runs: "json" takes every row
+// in one statement, "loop" runs the statement once per row.
+message BatchPlan {
+  string mode = 1 [json_name = "mode"];
+  string rounds_text = 2 [json_name = "rounds_text"];
+  string read_text = 3 [json_name = "read_text"];
+  // unnest_params are the placeholders the statement unnests: each JSON
+  // row carries one element of each.
+  repeated int32 unnest_params = 4 [json_name = "unnest_params"];
 }
 
 message Parameter {

@@ -11,12 +11,14 @@ package {{.Package}}
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 )
 
 {{template "duckdbCode" . }}
@@ -301,4 +303,189 @@ func duckdbScanValue[T any](dst *T, src any) error {
 	*dst = n.V
 	return nil
 }
+// A :batch query whose row comes from a one-row VALUES list takes all its
+// rows in one statement: the rows travel as one JSON array ($1), which the
+// statement unnests with from_json. It runs in rounds ($2), round r
+// taking the r-th row of each key, so that the rows land as they would one
+// statement at a time; the rounds query counts them. A batch with
+// RETURNING reads its rows back by key, in the same transaction.
+
+// duckdbTx runs fn in a transaction: db itself when it is one, a new one
+// when db can begin one, else db as it is.
+func duckdbTx(ctx context.Context, db DBTX, fn func(DBTX) error) error {
+	switch d := db.(type) {
+	case *sql.Tx:
+		return fn(d)
+	case interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}:
+		tx, err := d.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if err := fn(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}
+	return fn(db)
+}
+
+func duckdbBatchWrite(ctx context.Context, db DBTX, rows any, write, rounds string) error {
+	blob, err := json.Marshal(rows)
+	if err != nil {
+		return err
+	}
+	return duckdbBatchWriteJSON(ctx, db, string(blob), write, rounds)
+}
+
+func duckdbBatchWriteJSON(ctx context.Context, db DBTX, rows, write, rounds string) error {
+	if rounds == "" {
+		_, err := db.ExecContext(ctx, write, rows)
+		return err
+	}
+	var n int64
+	if err := db.QueryRowContext(ctx, rounds, rows).Scan(&n); err != nil {
+		return err
+	}
+	if n <= 1 {
+		_, err := db.ExecContext(ctx, write, rows, 1)
+		return err
+	}
+	return duckdbTx(ctx, db, func(db DBTX) error {
+		for r := int64(1); r <= n; r++ {
+			if _, err := db.ExecContext(ctx, write, rows, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// duckdbBatchRead writes the rows, then reads them back by key. scan gets
+// each row read, its index in the batch first.
+func duckdbBatchRead(ctx context.Context, db DBTX, rows any, write, rounds, read string, scan func(func(...any) error) error) error {
+	blob, err := json.Marshal(rows)
+	if err != nil {
+		return err
+	}
+	return duckdbTx(ctx, db, func(db DBTX) error {
+		if err := duckdbBatchWriteJSON(ctx, db, string(blob), write, rounds); err != nil {
+			return err
+		}
+		res, err := db.QueryContext(ctx, read, string(blob))
+		if err != nil {
+			return err
+		}
+		defer res.Close()
+		for res.Next() {
+			if err := scan(res.Scan); err != nil {
+				return err
+			}
+		}
+		if err := res.Close(); err != nil {
+			return err
+		}
+		return res.Err()
+	})
+}
+
+var duckdbErrNoRows = sql.ErrNoRows
+
+// duckdbBatchLen is the number of rows a batch element unnests to: the
+// length of its longest list.
+func duckdbBatchLen(lens ...int) int {
+	n := 0
+	for _, l := range lens {
+		n = max(n, l)
+	}
+	return n
+}
+
+// duckdbBatchAt is element i of a list, or nil past its end.
+func duckdbBatchAt[T any](l []T, i int) any {
+	if i < len(l) {
+		return l[i]
+	}
+	return nil
+}
+
+func duckdbBatchAtWith[T, U any](l []T, i int, f func(T) U) any {
+	if i < len(l) {
+		return f(l[i])
+	}
+	return nil
+}
+
+// A DATE travels as the calendar day of the value in its own location, a
+// TIMESTAMP as its UTC wall clock, and a TIMESTAMPTZ as the instant.
+
+func duckdbBatchDate(t time.Time) string { return t.Format("2006-01-02") }
+
+func duckdbBatchDatePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := duckdbBatchDate(*t)
+	return &s
+}
+
+func duckdbBatchDateNull(t sql.NullTime) *string {
+	if !t.Valid {
+		return nil
+	}
+	return duckdbBatchDatePtr(&t.Time)
+}
+
+func duckdbBatchTimestamp(t time.Time) string {
+	return t.UTC().Format("2006-01-02T15:04:05.999999999")
+}
+
+func duckdbBatchTimestampPtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := duckdbBatchTimestamp(*t)
+	return &s
+}
+
+func duckdbBatchTimestampNull(t sql.NullTime) *string {
+	if !t.Valid {
+		return nil
+	}
+	return duckdbBatchTimestampPtr(&t.Time)
+}
+
+func duckdbBatchTimestamptz(t time.Time) string { return t.Format(time.RFC3339Nano) }
+
+func duckdbBatchTimestamptzPtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := duckdbBatchTimestamptz(*t)
+	return &s
+}
+
+func duckdbBatchTimestamptzNull(t sql.NullTime) *string {
+	if !t.Valid {
+		return nil
+	}
+	return duckdbBatchTimestamptzPtr(&t.Time)
+}
+
+// duckdbBatchValuer is the value a sql.Null type or other driver.Valuer
+// stands for, which JSON encodes as the value or null. An error from Value
+// fails the encoding.
+func duckdbBatchValuer(v driver.Valuer) any {
+	x, err := v.Value()
+	if err != nil {
+		return duckdbBatchErr{err}
+	}
+	return x
+}
+
+type duckdbBatchErr struct{ err error }
+
+func (e duckdbBatchErr) MarshalJSON() ([]byte, error) { return nil, e.err }
 {{end}}

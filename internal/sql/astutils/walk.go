@@ -1391,6 +1391,46 @@ func Walk(f Visitor, node ast.Node) {
 			Walk(f, n.LockedRels)
 		}
 
+	case *ast.MergeStmt:
+		if n.WithClause != nil {
+			Walk(f, n.WithClause)
+		}
+		if n.Relation != nil {
+			Walk(f, n.Relation)
+		}
+		if n.Source != nil {
+			Walk(f, n.Source)
+		}
+		if n.JoinCondition != nil {
+			Walk(f, n.JoinCondition)
+		}
+		if n.UsingColumns != nil {
+			Walk(f, n.UsingColumns)
+		}
+		if n.WhenClauses != nil {
+			Walk(f, n.WhenClauses)
+		}
+		if n.ReturningList != nil {
+			Walk(f, n.ReturningList)
+		}
+
+	case *ast.MergeWhenClause:
+		if n.Condition != nil {
+			Walk(f, n.Condition)
+		}
+		if n.TargetList != nil {
+			Walk(f, n.TargetList)
+		}
+		if n.Cols != nil {
+			Walk(f, n.Cols)
+		}
+		if n.Values != nil {
+			Walk(f, n.Values)
+		}
+		if n.ErrorExpr != nil {
+			Walk(f, n.ErrorExpr)
+		}
+
 	case *ast.MinMaxExpr:
 		if n.Xpr != nil {
 			Walk(f, n.Xpr)

@@ -492,6 +492,11 @@ func (i *importer) batchImports() fileImports {
 					return true
 				}
 			}
+			for _, f := range q.BatchFields {
+				if hasPrefixIgnoringSliceAndPointerPrefix(f.Type, name) {
+					return true
+				}
+			}
 		}
 		return false
 	})

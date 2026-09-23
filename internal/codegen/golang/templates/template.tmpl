@@ -251,4 +251,7 @@ import (
 {{if .SQLDriver.IsPGX }}
     {{- template "batchCodePgx" .}}
 {{end}}
+{{if .SQLDriver.IsDuckDB }}
+    {{- template "batchCodeDuckDB" .}}
+{{end}}
 {{end}}

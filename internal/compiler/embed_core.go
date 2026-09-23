@@ -140,6 +140,8 @@ func targetList(n ast.Node) *ast.List {
 		return s.ReturningList
 	case *ast.DeleteStmt:
 		return s.ReturningList
+	case *ast.MergeStmt:
+		return s.ReturningList
 	}
 	return nil
 }
